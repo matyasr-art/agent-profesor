@@ -22,6 +22,15 @@ public sealed class VersionStore : IDisposable
     private readonly SqliteConnection _connection;
     private readonly StorageConfig _storageConfig;
 
+    // The store is touched from more than one thread: the capture poller commits versions on a
+    // background timer thread, while the search/history windows read on the UI thread, and
+    // retention runs on its own background task. A single SqliteConnection is not safe for
+    // concurrent use, so every public entry point serializes on this gate. Monitor is reentrant,
+    // so the few public methods that call other public ones (e.g. RebaseToKeyframe →
+    // GetVersionText) don't deadlock. Throughput is tiny (a poll every couple of seconds), so a
+    // coarse lock costs nothing and removes a whole class of race-condition crashes.
+    private readonly object _gate = new();
+
     public VersionStore(string dataSource, StorageConfig storageConfig)
     {
         _storageConfig = storageConfig;
@@ -66,6 +75,14 @@ public sealed class VersionStore : IDisposable
     }
 
     public CaptureResult Capture(string docKey, string appName, string windowTitle, string fullText, DateTimeOffset capturedAt, CaptureTrigger trigger)
+    {
+        lock (_gate)
+        {
+            return CaptureCore(docKey, appName, windowTitle, fullText, capturedAt, trigger);
+        }
+    }
+
+    private CaptureResult CaptureCore(string docKey, string appName, string windowTitle, string fullText, DateTimeOffset capturedAt, CaptureTrigger trigger)
     {
         using var transaction = _connection.BeginTransaction();
 
@@ -126,11 +143,22 @@ public sealed class VersionStore : IDisposable
 
     public string GetLatestText(long documentId)
     {
-        var latest = GetLatestVersionRow(documentId, null) ?? throw new InvalidOperationException($"Dokument {documentId} nemá žádnou verzi.");
-        return ReconstructText(documentId, latest.Id, null);
+        lock (_gate)
+        {
+            var latest = GetLatestVersionRow(documentId, null) ?? throw new InvalidOperationException($"Dokument {documentId} nemá žádnou verzi.");
+            return ReconstructText(documentId, latest.Id, null);
+        }
     }
 
     public IReadOnlyList<DocumentInfo> ListDocuments()
+    {
+        lock (_gate)
+        {
+            return ListDocumentsCore();
+        }
+    }
+
+    private IReadOnlyList<DocumentInfo> ListDocumentsCore()
     {
         using var cmd = _connection.CreateCommand();
         cmd.CommandText = "SELECT id, app_name, window_title, doc_key, created_at, last_captured_at FROM documents ORDER BY last_captured_at DESC";
@@ -150,6 +178,14 @@ public sealed class VersionStore : IDisposable
     }
 
     public IReadOnlyList<VersionSummary> ListVersions(long documentId)
+    {
+        lock (_gate)
+        {
+            return ListVersionsCore(documentId);
+        }
+    }
+
+    private IReadOnlyList<VersionSummary> ListVersionsCore(long documentId)
     {
         using var cmd = _connection.CreateCommand();
         cmd.CommandText = """
@@ -176,11 +212,14 @@ public sealed class VersionStore : IDisposable
 
     public string GetVersionText(long versionId)
     {
-        using var cmd = _connection.CreateCommand();
-        cmd.CommandText = "SELECT document_id FROM versions WHERE id = $id";
-        cmd.Parameters.AddWithValue("$id", versionId);
-        var documentId = (long?)cmd.ExecuteScalar() ?? throw new InvalidOperationException($"Verze {versionId} neexistuje.");
-        return ReconstructText(documentId, versionId, null);
+        lock (_gate)
+        {
+            using var cmd = _connection.CreateCommand();
+            cmd.CommandText = "SELECT document_id FROM versions WHERE id = $id";
+            cmd.Parameters.AddWithValue("$id", versionId);
+            var documentId = (long?)cmd.ExecuteScalar() ?? throw new InvalidOperationException($"Verze {versionId} neexistuje.");
+            return ReconstructText(documentId, versionId, null);
+        }
     }
 
     public IReadOnlyList<SearchHit> Search(string query, int limit = 30)
@@ -189,6 +228,14 @@ public sealed class VersionStore : IDisposable
         if (matchExpression.Length == 0)
             return Array.Empty<SearchHit>();
 
+        lock (_gate)
+        {
+            return SearchCore(matchExpression, limit);
+        }
+    }
+
+    private IReadOnlyList<SearchHit> SearchCore(string matchExpression, int limit)
+    {
         using var cmd = _connection.CreateCommand();
         cmd.CommandText = """
             SELECT d.id, d.app_name, d.window_title, v.id, v.captured_at,
@@ -362,18 +409,21 @@ public sealed class VersionStore : IDisposable
     /// </summary>
     public void RebaseToKeyframe(long versionId)
     {
-        var text = GetVersionText(versionId);
-        var compressed = TextCompression.Compress(text, _storageConfig.CompressionLevel);
+        lock (_gate)
+        {
+            var text = GetVersionText(versionId);
+            var compressed = TextCompression.Compress(text, _storageConfig.CompressionLevel);
 
-        using var cmd = _connection.CreateCommand();
-        cmd.CommandText = """
-            UPDATE versions
-            SET is_keyframe = 1, base_version_id = NULL, diffs_since_keyframe = 0, content_compressed = $content
-            WHERE id = $id
-            """;
-        cmd.Parameters.AddWithValue("$id", versionId);
-        cmd.Parameters.AddWithValue("$content", compressed);
-        cmd.ExecuteNonQuery();
+            using var cmd = _connection.CreateCommand();
+            cmd.CommandText = """
+                UPDATE versions
+                SET is_keyframe = 1, base_version_id = NULL, diffs_since_keyframe = 0, content_compressed = $content
+                WHERE id = $id
+                """;
+            cmd.Parameters.AddWithValue("$id", versionId);
+            cmd.Parameters.AddWithValue("$content", compressed);
+            cmd.ExecuteNonQuery();
+        }
     }
 
     /// <summary>
@@ -381,6 +431,14 @@ public sealed class VersionStore : IDisposable
     /// as a diff base (retention guarantees this by always rebasing the survivor first).
     /// </summary>
     public void DeleteVersion(long versionId)
+    {
+        lock (_gate)
+        {
+            DeleteVersionCore(versionId);
+        }
+    }
+
+    private void DeleteVersionCore(long versionId)
     {
         using var tx = _connection.BeginTransaction();
 
@@ -407,13 +465,16 @@ public sealed class VersionStore : IDisposable
 
     public void Dispose()
     {
-        _connection.Dispose();
+        lock (_gate)
+        {
+            _connection.Dispose();
 
-        // Microsoft.Data.Sqlite pools the underlying native connection by default, which on
-        // Windows keeps a file handle open even after Dispose() – enough to make an immediate
-        // File.Delete of the database file fail with "used by another process" (harmless on
-        // macOS/Linux, where deleting an open file is allowed, which is why this only showed up
-        // in CI on windows-latest and not during local testing on this Mac).
-        SqliteConnection.ClearPool(_connection);
+            // Microsoft.Data.Sqlite pools the underlying native connection by default, which on
+            // Windows keeps a file handle open even after Dispose() – enough to make an immediate
+            // File.Delete of the database file fail with "used by another process" (harmless on
+            // macOS/Linux, where deleting an open file is allowed, which is why this only showed
+            // up in CI on windows-latest and not during local testing on this Mac).
+            SqliteConnection.ClearPool(_connection);
+        }
     }
 }

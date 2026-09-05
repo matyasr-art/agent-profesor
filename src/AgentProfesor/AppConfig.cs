@@ -31,6 +31,8 @@ public sealed class AppConfig
 
     public string DatabasePath() => Path.Combine(ResolveDataDirectory(), "agentprofesor.db");
 
+    public string LogDirectory() => Path.Combine(ResolveDataDirectory(), "logs");
+
     public static AppConfig Load()
     {
         var path = Path.Combine(AppContext.BaseDirectory, "appsettings.json");

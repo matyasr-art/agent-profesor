@@ -1,5 +1,11 @@
 namespace AgentProfesor.Core;
 
+public sealed record RetentionResult(int Rebased, int Deleted)
+{
+    public static readonly RetentionResult None = new(0, 0);
+    public bool DidAnything => Rebased > 0 || Deleted > 0;
+}
+
 /// <summary>
 /// Thins old version history down to save space, per <see cref="RetentionConfig"/>:
 /// everything within KeepAllDays stays untouched; between KeepAllDays and ThinToHourlyDays
@@ -15,13 +21,15 @@ namespace AgentProfesor.Core;
 /// </summary>
 public static class RetentionService
 {
-    public static void Run(VersionStore store, RetentionConfig config, DateTimeOffset now)
+    public static RetentionResult Run(VersionStore store, RetentionConfig config, DateTimeOffset now)
     {
         if (!config.Enabled)
-            return;
+            return RetentionResult.None;
 
         var keepAllCutoff = now.AddDays(-config.KeepAllDays);
         var hourlyCutoff = now.AddDays(-config.ThinToHourlyDays);
+        var rebased = 0;
+        var deleted = 0;
 
         foreach (var doc in store.ListDocuments())
         {
@@ -30,16 +38,18 @@ public static class RetentionService
                 continue;
 
             var hourlyZone = versions.Where(v => v.CapturedAt < keepAllCutoff && v.CapturedAt >= hourlyCutoff);
-            ThinByBucket(store, hourlyZone, v => v.CapturedAt.UtcDateTime.ToString("yyyy-MM-dd-HH"));
+            ThinByBucket(store, hourlyZone, v => v.CapturedAt.UtcDateTime.ToString("yyyy-MM-dd-HH"), ref rebased, ref deleted);
 
             var beyondZone = versions.Where(v => v.CapturedAt < hourlyCutoff);
             ThinByBucket(store, beyondZone, config.KeepDailyBeyond
                 ? v => v.CapturedAt.UtcDateTime.ToString("yyyy-MM-dd")
-                : _ => "all-time");
+                : _ => "all-time", ref rebased, ref deleted);
         }
+
+        return new RetentionResult(rebased, deleted);
     }
 
-    private static void ThinByBucket(VersionStore store, IEnumerable<VersionSummary> versions, Func<VersionSummary, string> bucketKey)
+    private static void ThinByBucket(VersionStore store, IEnumerable<VersionSummary> versions, Func<VersionSummary, string> bucketKey, ref int rebased, ref int deleted)
     {
         foreach (var group in versions.GroupBy(bucketKey))
         {
@@ -49,9 +59,13 @@ public static class RetentionService
 
             var keep = ordered[^1];
             store.RebaseToKeyframe(keep.Id);
+            rebased++;
 
             foreach (var v in ordered.Take(ordered.Count - 1))
+            {
                 store.DeleteVersion(v.Id);
+                deleted++;
+            }
         }
     }
 }

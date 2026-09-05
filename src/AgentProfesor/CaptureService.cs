@@ -10,36 +10,56 @@ namespace AgentProfesor;
 /// which decides whether/when that turns into a stored version. Deliberately never touches raw
 /// keystrokes or the clipboard – it only ever reads the text already visible in whatever control
 /// has focus, the same way a screen reader would.
+///
+/// Runs on a background timer thread on purpose: Microsoft recommends calling UI Automation off
+/// the UI thread to avoid re-entrancy/deadlock, and it keeps a slow UIA call from freezing the
+/// tray/search UI.
 /// </summary>
 public sealed class CaptureService : IDisposable
 {
     private readonly AppConfig _config;
     private readonly CaptureCoordinator _coordinator;
+    private readonly FileLog _log;
     private readonly System.Threading.Timer _timer;
     private string? _lastDocKey;
     private volatile bool _paused;
+    private int _pollInFlight;
+    private int _consecutiveErrors;
 
-    public event Action<string>? Activity;
-
-    public CaptureService(AppConfig config, VersionStore store)
+    public CaptureService(AppConfig config, VersionStore store, FileLog log)
     {
         _config = config;
+        _log = log;
         _coordinator = new CaptureCoordinator(store, config.Capture);
         _timer = new System.Threading.Timer(_ => SafePoll(), null, Timeout.Infinite, Timeout.Infinite);
     }
 
     public bool IsPaused => _paused;
 
-    public void Start() => _timer.Change(0, Math.Max(250, _config.Capture.PollIntervalMilliseconds));
+    public void Start()
+    {
+        var interval = Math.Max(250, _config.Capture.PollIntervalMilliseconds);
+        _timer.Change(0, interval);
+        _log.Info($"Capture spuštěn (poll {interval} ms, pauza {_config.Capture.PauseAfterSeconds} s, periodicky {_config.Capture.PeriodicSnapshotSeconds} s)");
+    }
 
-    public void Pause() => _paused = true;
+    public void Pause()
+    {
+        _paused = true;
+        _log.Info("Capture pozastaven uživatelem");
+    }
 
-    public void Resume() => _paused = false;
+    public void Resume()
+    {
+        _paused = false;
+        _log.Info("Capture obnoven uživatelem");
+    }
 
     public void Stop()
     {
         _timer.Change(Timeout.Infinite, Timeout.Infinite);
         Flush();
+        _log.Info("Capture zastaven");
     }
 
     public void Flush()
@@ -47,11 +67,11 @@ public sealed class CaptureService : IDisposable
         try
         {
             foreach (var result in _coordinator.FlushAll(DateTimeOffset.Now))
-                NotifyIfStored(result);
+                LogStored(result, "flush");
         }
-        catch
+        catch (Exception ex)
         {
-            // Nejlepší možná snaha při vypínání appky – nesmí to zablokovat ukončení.
+            _log.Warn("Flush při ukončování selhal", ex);
         }
     }
 
@@ -60,14 +80,28 @@ public sealed class CaptureService : IDisposable
         if (_paused)
             return;
 
+        // System.Threading.Timer může spustit callback znovu, i když ten předchozí ještě běží
+        // (UIA umí být pomalá). Bez tohohle by se pomalé polly hromadily na sebe.
+        if (Interlocked.CompareExchange(ref _pollInFlight, 1, 0) != 0)
+            return;
+
         try
         {
             Poll();
+            _consecutiveErrors = 0;
         }
-        catch
+        catch (Exception ex)
         {
             // UI Automation umí spadnout na leccos (zaseklé okno, COM chyba u cizí appky) –
-            // jeden neúspěšný poll nesmí shodit agenta ani zastavit další zachytávání.
+            // jeden neúspěšný poll nesmí shodit agenta ani zastavit další zachytávání. Logujeme
+            // ale jen prvních pár za sebou, ať se log nezaplaví, když je něco trvale rozbité.
+            _consecutiveErrors++;
+            if (_consecutiveErrors <= 3)
+                _log.Warn($"Poll selhal (za sebou {_consecutiveErrors}×)", ex);
+        }
+        finally
+        {
+            Interlocked.Exchange(ref _pollInFlight, 0);
         }
     }
 
@@ -104,22 +138,22 @@ public sealed class CaptureService : IDisposable
         HandleFocusChange(docKey);
 
         var result = _coordinator.Observe(docKey, processName, windowTitle, text, DateTimeOffset.Now);
-        NotifyIfStored(result);
+        LogStored(result, "capture");
     }
 
     private void HandleFocusChange(string? currentDocKey)
     {
         if (_lastDocKey != null && _lastDocKey != currentDocKey)
-            NotifyIfStored(_coordinator.NotifyFocusLost(_lastDocKey, DateTimeOffset.Now));
+            LogStored(_coordinator.NotifyFocusLost(_lastDocKey, DateTimeOffset.Now), "switch");
 
         _lastDocKey = currentDocKey;
     }
 
-    private void NotifyIfStored(CaptureResult? result)
+    private void LogStored(CaptureResult? result, string source)
     {
         if (result == null || result.Outcome == CaptureOutcome.Unchanged)
             return;
-        Activity?.Invoke($"Verze #{result.VersionId} ({result.Outcome}) – dokument {result.DocumentId}");
+        _log.Info($"Uložena verze #{result.VersionId} ({result.Outcome}) dokumentu {result.DocumentId} [{source}]");
     }
 
     private static string? TryReadText(AutomationElement element)

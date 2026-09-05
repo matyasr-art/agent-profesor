@@ -24,22 +24,48 @@ instalačních balíčků**.
   nebo diff), plným textem vybrané verze a barevně odlišeným rozdílem
   oproti předchozí verzi (`+`/`-`/beze změny).
 - **Pauza/obnovení záznamu** — přes tray menu.
-- **Retence** — `RetentionService` průběžně proklestí starou historii podle
+- **Retence** — `RetentionService` proklestí starou historii podle
   `Retention` (do `KeepAllDays` beze změny, pak zhuštění na 1 verzi/hodinu,
-  po `ThinToHourlyDays` na 1 verzi/den nebo úplně).
+  po `ThinToHourlyDays` na 1 verzi/den nebo úplně). Spouští se sama: jednou
+  po startu (catch-up) a pak denně kolem `DailyRunHour`, na pozadí.
+- **Logování** — každé spuštění, uložená verze, chyba pollu, běh retence i
+  aktualizace jdou do `%LocalAppData%\AgentProfesor\logs\agent-*.log`
+  (rotace po `LogRotationMinutes`, každý řádek se hned flushne, ať přežije i
+  pád). Neošetřené výjimky (i fatální) se zalogují, takže „agent někdy
+  zmizel" už nebude bez stopy. Tray menu má „Otevřít složku s logy", ať
+  tester log snadno pošle zpět.
+- **Autostart po přihlášení** — `RunAtLogon` (výchozí zapnuto) zapisuje
+  spouštění do `HKCU\...\Run` (bez admin práv, snadno zkontrolovatelné).
 - **Aktualizace přes GitHub Releases** (Velopack) — viz níže.
 
-Jádro (diffování, ukládání verzí, retence, vyhledávání) je v samostatném
-projektu `AgentProfesor.Core`, který neběží jen na Windows — má 40
-jednotkových testů (`tests/AgentProfesor.Core.Tests`), které se pouštějí i
-v CI na `ubuntu-latest` při každém pushi.
+Jádro (diffování, ukládání verzí, retence, vyhledávání, logování) je v
+samostatném projektu `AgentProfesor.Core`, který neběží jen na Windows — má
+46 jednotkových testů (`tests/AgentProfesor.Core.Tests`), které se pouštějí
+i v CI na `ubuntu-latest` při každém pushi. `VersionStore` je thread-safe:
+capture (vlastní vlákno), hledání (UI vlákno) i retence sáhnou na databázi
+přes jeden zámek, takže souběh nemůže data poškodit.
 
-**Co ověřeno a co ne:** jádro (diff/verze/retence/hledání) je pokryté testy
-a reálně proběhlo. UI Automation capture, globální klávesová zkratka a tray
-appka jako celek jsou zatím ověřené jen tím, že se to zkompiluje a spustí
-`dotnet publish` pro win-x64 (vývoj probíhá na Macu, který Windows nemá) —
-reálné otestování na živém Windows (podle `CTI-ME-PRVNI.md` z prvního
-testovacího kola) ještě čeká.
+**Co ověřeno a co ne:** jádro (diff/verze/retence/hledání/log) je pokryté
+testy a reálně proběhlo — spustit se dá i mimo Windows demo nástrojem
+(viz níže). UI Automation capture, globální klávesová zkratka, autostart a
+tray appka jako celek jsou zatím ověřené jen tím, že se to zkompiluje a
+spustí `dotnet publish` pro win-x64 (vývoj probíhá na Macu, který Windows
+nemá) — reálné otestování na živém Windows (podle `CTI-ME-PRVNI.md` z
+prvního testovacího kola) ještě čeká.
+
+## Jak vidět verzování bez Windows (demo)
+
+`tools/VersionDemo` pohání skutečné jádro: nasimuluje psaní jednoho
+dokumentu v několika verzích a vypíše seznam verzí, rozdíl mezi nimi a
+výsledky hledání — plus vyexportuje `demo-data.json`. Běží kdekoliv:
+
+```bash
+dotnet run --project tools/VersionDemo -- demo-data.json
+```
+
+Z toho exportu je postavený klikací **náhled rozhraní** (jak vypadá okno
+historie verzí a hledání ve Windows appce), takže verzování je vidět i před
+prvním během na Windows.
 
 ## Jak funguje aktualizace
 

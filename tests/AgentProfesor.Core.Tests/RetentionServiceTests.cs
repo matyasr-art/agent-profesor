@@ -54,7 +54,11 @@ public class RetentionServiceTests : IDisposable
         for (var i = 0; i < 5; i++)
             docId = _store.Capture("doc1", "word", "dopis.docx", $"verze {i}", start.AddMinutes(i * 5), CaptureTrigger.Periodic).DocumentId;
 
-        RetentionService.Run(_store, new RetentionConfig { KeepAllDays = 90, ThinToHourlyDays = 365 }, Now);
+        var result = RetentionService.Run(_store, new RetentionConfig { KeepAllDays = 90, ThinToHourlyDays = 365 }, Now);
+
+        Assert.Equal(1, result.Rebased);
+        Assert.Equal(4, result.Deleted);
+        Assert.True(result.DidAnything);
 
         var survivors = _store.ListVersions(docId);
         Assert.Single(survivors);
@@ -120,8 +124,9 @@ public class RetentionServiceTests : IDisposable
         for (var i = 0; i < 5; i++)
             docId = _store.Capture("doc1", "notepad", "ancient.txt", $"verze {i}", start.AddMinutes(i), CaptureTrigger.Periodic).DocumentId;
 
-        RetentionService.Run(_store, new RetentionConfig { Enabled = false }, Now);
+        var result = RetentionService.Run(_store, new RetentionConfig { Enabled = false }, Now);
 
+        Assert.False(result.DidAnything);
         Assert.Equal(5, _store.ListVersions(docId).Count);
     }
 }
