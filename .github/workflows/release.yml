@@ -41,7 +41,9 @@ jobs:
         run: dotnet publish src/AgentProfesor/AgentProfesor.csproj -c Release -r win-x64 --self-contained true -p:Version=${{ steps.version.outputs.version }} -o publish/win-x64
 
       - name: Nainstalovat Velopack CLI
-        run: dotnet tool install -g vpk
+        # Verze CLI musí sedět s knihovnou Velopack v .csproj (1.2.0) – nepřipnutý vpk by mohl
+        # vyprodukovat novější formát balíčku, který embedded runtime na klientech nepřečte.
+        run: dotnet tool install -g vpk --version 1.2.0
 
       - name: Zabalit Velopack release
         run: vpk pack --packId AgentProfesor --packVersion ${{ steps.version.outputs.version }} --packDir publish/win-x64 --mainExe AgentProfesor.exe --packTitle AgentProfesor --packAuthors iBSNS --channel win -o releases

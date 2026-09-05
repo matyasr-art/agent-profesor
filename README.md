@@ -53,6 +53,14 @@ spustí `dotnet publish` pro win-x64 (vývoj probíhá na Macu, který Windows
 nemá) — reálné otestování na živém Windows (podle `CTI-ME-PRVNI.md` z
 prvního testovacího kola) ještě čeká.
 
+Protože se appka nedala vyzkoušet za běhu, prošla místo toho **adversariální
+revizí kódu** (6 recenzentů po dimenzích + ověření každého nálezu). Z ní
+vzešlé potvrzené vady jsou opravené: mj. stabilní identita dokumentu přes
+handle okna (ne měnící se titulek), vynechání vlastních oken agenta z
+záznamu, korektní dorénování běžícího pollu a retence při ukončení,
+thread-safe koordinátor zachytávání a self-defending mazání verzí odolné
+proti zpětnému skoku hodin.
+
 ## Jak vidět verzování bez Windows (demo)
 
 `tools/VersionDemo` pohání skutečné jádro: nasimuluje psaní jednoho
@@ -100,10 +108,19 @@ Dá se to spustit i ručně bez tagu — záložka Actions → Release →
 
 ## První instalace pro testera
 
-První verzi musí tester nainstalovat ručně — stáhne `AgentProfesorSetup.exe`
-z GitHub Releases stránky repa a spustí ho. Repo je zatím privátní, takže
-testeři potřebují buď být pozvaní jako collaboři, nebo se release stránka
-zpřístupní jinak (např. zveřejnění repa, až na to bude čas).
+První verzi musí tester nainstalovat ručně — stáhne `AgentProfesor-win-Setup.exe`
+z GitHub Releases stránky repa a spustí ho. Repo je **veřejné**, takže odkaz na
+release stačí poslat a stažení i následné auto-aktualizace fungují bez tokenu
+(privátní repo by bez autentizace vracelo 404 — proto je veřejné).
+
+## Vlastní nastavení, které přežije aktualizaci
+
+Zabalený `appsettings.json` leží v instalačním adresáři a Velopack ho při každé
+aktualizaci přepíše, takže úpravy v něm by po updatu zmizely. Kdo si chce něco
+změnit natrvalo (zkratka, retence, interval kontroly), založí
+`%LocalAppData%\AgentProfesor\appsettings.json` a napíše do něj **jen ty klíče,
+které mění** — appka je při startu přimerguje na výchozí hodnoty. Nové výchozí
+hodnoty z pozdějších verzí tím pádem dál platí u všeho, čeho se tester nedotkl.
 
 ## Lokální build
 

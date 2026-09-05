@@ -21,7 +21,7 @@ public sealed record RetentionResult(int Rebased, int Deleted)
 /// </summary>
 public static class RetentionService
 {
-    public static RetentionResult Run(VersionStore store, RetentionConfig config, DateTimeOffset now)
+    public static RetentionResult Run(VersionStore store, RetentionConfig config, DateTimeOffset now, CancellationToken cancellation = default)
     {
         if (!config.Enabled)
             return RetentionResult.None;
@@ -33,6 +33,11 @@ public static class RetentionService
 
         foreach (var doc in store.ListDocuments())
         {
+            // Retence běží na pozadí a může trvat dlouho; při ukončování appky se má zastavit,
+            // než se pod ní disposne VersionStore.
+            if (cancellation.IsCancellationRequested)
+                break;
+
             var versions = store.ListVersions(doc.Id);
             if (versions.Count <= 1)
                 continue;

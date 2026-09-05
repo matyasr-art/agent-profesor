@@ -104,6 +104,22 @@ public class FileLogTests : IDisposable
     }
 
     [Fact]
+    public void Writing_after_dispose_does_not_open_a_new_orphan_file()
+    {
+        var log = new FileLog(_dir, rotationMinutes: 60);
+        log.Info("před dispose");
+        log.Dispose();
+
+        // Zápis po Dispose (např. z doznívajícího background tasku) se musí tiše zahodit,
+        // ne otevřít nový agent-*.log, který už nikdo nezavře.
+        log.Info("po dispose");
+
+        var files = Directory.GetFiles(_dir, "agent-*.log");
+        Assert.Single(files);
+        Assert.DoesNotContain("po dispose", File.ReadAllText(files[0]));
+    }
+
+    [Fact]
     public void Filename_matches_the_agent_glob_from_the_tester_readme()
     {
         using var log = new FileLog(_dir, rotationMinutes: 60);

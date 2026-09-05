@@ -1,12 +1,16 @@
 using System.Diagnostics;
 using System.Drawing.Drawing2D;
 using System.IO;
+using System.Runtime.InteropServices;
 using AgentProfesor.Core;
 
 namespace AgentProfesor;
 
 public sealed class TrayContext : ApplicationContext
 {
+    [DllImport("user32.dll", SetLastError = true)]
+    private static extern bool DestroyIcon(IntPtr handle);
+
     private readonly NotifyIcon _trayIcon;
     private readonly ToolStripMenuItem _statusItem;
     private readonly ToolStripMenuItem _pauseItem;
@@ -18,9 +22,12 @@ public sealed class TrayContext : ApplicationContext
     private readonly VersionStore _store;
     private readonly CaptureService _captureService;
     private readonly GlobalHotkey? _hotkey;
+    private readonly CancellationTokenSource _retentionCts = new();
     private Icon? _ownedIcon;
     private SearchForm? _searchForm;
     private DateOnly _lastRetentionRun = DateOnly.MinValue;
+    private Task? _retentionTask;
+    private bool _updateInFlight;
 
     public TrayContext(AppConfig config, FileLog log)
     {
@@ -160,11 +167,13 @@ public sealed class TrayContext : ApplicationContext
         _lastRetentionRun = today;
 
         // Běží na pozadí, ať neblokuje tray/UI (DB přístup je uvnitř VersionStore zamčený).
-        Task.Run(() =>
+        // Token umožní ukončení appky zastavit retenci dřív, než se pod ní disposne store.
+        var token = _retentionCts.Token;
+        _retentionTask = Task.Run(() =>
         {
             try
             {
-                var result = RetentionService.Run(_store, _config.Retention, DateTimeOffset.Now);
+                var result = RetentionService.Run(_store, _config.Retention, DateTimeOffset.Now, token);
                 if (result.DidAnything)
                     _log.Info($"Retence: sloučeno {result.Rebased}, smazáno {result.Deleted} verzí");
                 else
@@ -174,11 +183,22 @@ public sealed class TrayContext : ApplicationContext
             {
                 _log.Warn("Retence selhala", ex);
             }
-        });
+        }, token);
     }
 
     private async Task RunUpdateCheckAsync(bool manual)
     {
+        // Tři spouštěče (start, hodinový timer, ruční položka menu) běží všechny na UI vlákně,
+        // ale prokládají se na await bodech – bez guardu by se dvě kontroly mohly potkat nad
+        // jedním UpdateManagerem (dvojí download/apply).
+        if (_updateInFlight)
+        {
+            if (manual)
+                _trayIcon.ShowBalloonTip(2000, "AgentProfesor", "Kontrola aktualizací už probíhá…", ToolTipIcon.Info);
+            return;
+        }
+
+        _updateInFlight = true;
         try
         {
             var updated = await _updateService.CheckAndApplyAsync(restartAfterApply: true);
@@ -190,6 +210,10 @@ public sealed class TrayContext : ApplicationContext
             _log.Warn("Kontrola aktualizací selhala", ex);
             if (manual)
                 _trayIcon.ShowBalloonTip(5000, "AgentProfesor", $"Kontrola aktualizací selhala: {ex.Message}", ToolTipIcon.Error);
+        }
+        finally
+        {
+            _updateInFlight = false;
         }
     }
 
@@ -217,7 +241,18 @@ public sealed class TrayContext : ApplicationContext
             }
 
             var handle = bmp.GetHicon();
-            _ownedIcon = (Icon)Icon.FromHandle(handle).Clone();
+            try
+            {
+                using var tmp = Icon.FromHandle(handle);
+                _ownedIcon = (Icon)tmp.Clone();
+            }
+            finally
+            {
+                // GetHicon() alokuje nativní HICON, který vlastníme; Icon.FromHandle ho nepřebírá
+                // a Clone() si dělá vlastní kopii – původní handle musíme uvolnit sami, jinak
+                // uniká GDI handle.
+                DestroyIcon(handle);
+            }
             return _ownedIcon;
         }
         catch
@@ -231,10 +266,25 @@ public sealed class TrayContext : ApplicationContext
     {
         _log.Info("Ukončuji na žádost uživatele (Konec)");
         _hotkey?.Dispose();
-        _captureService.Stop();
-        _captureService.Dispose();
         _updateTimer.Stop();
         _retentionTimer.Stop();
+
+        // Zastav capture (počká na doběhnutí probíhajícího pollu) i případnou běžící retenci,
+        // teprve pak disposni store – ať se pod žádným z nich nezavře databáze za běhu.
+        _captureService.Stop();
+        _captureService.Dispose();
+
+        _retentionCts.Cancel();
+        try
+        {
+            _retentionTask?.Wait(TimeSpan.FromSeconds(5));
+        }
+        catch (Exception ex)
+        {
+            _log.Warn("Čekání na doběhnutí retence při ukončování selhalo", ex);
+        }
+        _retentionCts.Dispose();
+
         _store.Dispose();
         _trayIcon.Visible = false;
         _ownedIcon?.Dispose();

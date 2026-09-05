@@ -29,7 +29,12 @@ public sealed class GlobalHotkey : IDisposable
         _window.HotkeyPressed += () => Pressed?.Invoke();
 
         if (!RegisterHotKey(_window.Handle, HotkeyId, modifiers, (uint)key))
+        {
+            // Uklidit nativní okno, než vyhodíme výjimku – jinak by při obsazené zkratce zůstal
+            // viset HWND (TrayContext výjimku jen zaloguje a objekt zahodí).
+            _window.DestroyHandle();
             throw new InvalidOperationException($"Zkratku '{hotkeySpec}' se nepodařilo zaregistrovat (možná ji používá jiná appka).");
+        }
     }
 
     private static (uint Modifiers, Keys Key) Parse(string spec)

@@ -17,12 +17,21 @@ namespace AgentProfesor;
 /// </summary>
 public sealed class CaptureService : IDisposable
 {
+    // How many consecutive "nothing capturable in focus" polls before we treat the active
+    // document as switched-away-from. A single such poll is usually a transient glitch (a click
+    // into a menu/toolbar, a momentary UIA/COM hiccup) and shouldn't tear down – and prematurely
+    // commit – the document the user is still editing.
+    private const int NullReadGrace = 3;
+
     private readonly AppConfig _config;
     private readonly CaptureCoordinator _coordinator;
     private readonly FileLog _log;
     private readonly System.Threading.Timer _timer;
+    private readonly int _ownProcessId = Environment.ProcessId;
     private string? _lastDocKey;
+    private int _nullReads;
     private volatile bool _paused;
+    private volatile bool _stopping;
     private int _pollInFlight;
     private int _consecutiveErrors;
 
@@ -57,7 +66,17 @@ public sealed class CaptureService : IDisposable
 
     public void Stop()
     {
+        // Zabraň dalším spuštěním a POČKEJ na právě běžící poll, než uděláme Flush a než se nad
+        // námi disposne VersionStore. _timer.Change/Dispose samy o sobě na běžící callback
+        // nečekají – bez tohohle by Flush (UI vlákno) závodil s Observe (poll vlákno) nad
+        // coordinatorem a store by se zavřel pod běžícím Capture.
+        _stopping = true;
         _timer.Change(Timeout.Infinite, Timeout.Infinite);
+
+        var spin = new SpinWait();
+        while (Interlocked.CompareExchange(ref _pollInFlight, 0, 0) != 0)
+            spin.SpinOnce();
+
         Flush();
         _log.Info("Capture zastaven");
     }
@@ -77,7 +96,7 @@ public sealed class CaptureService : IDisposable
 
     private void SafePoll()
     {
-        if (_paused)
+        if (_paused || _stopping)
             return;
 
         // System.Threading.Timer může spustit callback znovu, i když ten předchozí ještě běží
@@ -87,6 +106,8 @@ public sealed class CaptureService : IDisposable
 
         try
         {
+            if (_stopping)
+                return;
             Poll();
             _consecutiveErrors = 0;
         }
@@ -110,43 +131,85 @@ public sealed class CaptureService : IDisposable
         var element = AutomationElement.FocusedElement;
         if (element == null)
         {
-            HandleFocusChange(null);
+            NoCapturableDocument();
+            return;
+        }
+
+        int processId;
+        try
+        {
+            processId = element.Current.ProcessId;
+        }
+        catch
+        {
+            NoCapturableDocument();
+            return;
+        }
+
+        // Nikdy nezachytávej vlastní okna (vyhledávací okno, okno historie) – jinak by se do
+        // úložiště indexovaly zpět už uložené (a citlivé) texty a hledané výrazy.
+        if (processId == _ownProcessId)
+        {
+            NoCapturableDocument();
             return;
         }
 
         string processName;
         try
         {
-            processName = Process.GetProcessById(element.Current.ProcessId).ProcessName;
+            processName = Process.GetProcessById(processId).ProcessName;
         }
         catch
         {
-            HandleFocusChange(null);
+            NoCapturableDocument();
             return;
         }
 
+        var (windowTitle, windowHandle) = FindWindow(element);
         var text = TryReadText(element);
         if (string.IsNullOrEmpty(text))
         {
-            HandleFocusChange(null);
+            NoCapturableDocument();
             return;
         }
 
-        var windowTitle = FindWindowTitle(element) ?? processName;
-        var docKey = $"{processName}|{windowTitle}";
+        var displayTitle = windowTitle ?? processName;
+        // Identita dokumentu stojí na STABILNÍM handlu okna, ne na titulku – ten se u řady appek
+        // mění za běhu (nesetřená hvězdička, průběžně vkládaný obsah v prohlížeči, počet
+        // nepřečtených v Outlooku), což by jinak roztříštilo historii jednoho dokumentu na mnoho.
+        // Handle zároveň rozliší dvě okna se shodným titulkem (dva „Untitled – Notepad").
+        var docKey = windowHandle != 0
+            ? $"{processName}|hwnd:{windowHandle}"
+            : $"{processName}|title:{displayTitle}";
 
-        HandleFocusChange(docKey);
+        OnCapturableDocument(docKey);
 
-        var result = _coordinator.Observe(docKey, processName, windowTitle, text, DateTimeOffset.Now);
+        var result = _coordinator.Observe(docKey, processName, displayTitle, text, DateTimeOffset.Now);
         LogStored(result, "capture");
     }
 
-    private void HandleFocusChange(string? currentDocKey)
+    private void OnCapturableDocument(string docKey)
     {
-        if (_lastDocKey != null && _lastDocKey != currentDocKey)
+        _nullReads = 0;
+        if (_lastDocKey != null && _lastDocKey != docKey)
             LogStored(_coordinator.NotifyFocusLost(_lastDocKey, DateTimeOffset.Now), "switch");
+        _lastDocKey = docKey;
+    }
 
-        _lastDocKey = currentDocKey;
+    private void NoCapturableDocument()
+    {
+        if (_lastDocKey == null)
+            return;
+
+        // Přechodné nečitelné čtení (kliknutí do menu, chvilková UIA chyba) nemá hned strhnout
+        // rozepsaný dokument – teprve po několika po sobě jdoucích prázdných pollech ho uzavřeme.
+        _nullReads++;
+        if (_nullReads < NullReadGrace)
+            return;
+
+        LogStored(_coordinator.NotifyFocusLost(_lastDocKey, DateTimeOffset.Now), "switch");
+        _lastDocKey = null;
+        _nullReads = 0;
     }
 
     private void LogStored(CaptureResult? result, string source)
@@ -185,7 +248,7 @@ public sealed class CaptureService : IDisposable
         return null;
     }
 
-    private static string? FindWindowTitle(AutomationElement element)
+    private static (string? Title, int Handle) FindWindow(AutomationElement element)
     {
         try
         {
@@ -193,17 +256,20 @@ public sealed class CaptureService : IDisposable
             var current = element;
             for (var i = 0; i < 25 && current != null; i++)
             {
-                if (current.Current.ControlType == ControlType.Window && !string.IsNullOrWhiteSpace(current.Current.Name))
-                    return current.Current.Name;
+                if (current.Current.ControlType == ControlType.Window)
+                {
+                    var title = current.Current.Name;
+                    return (string.IsNullOrWhiteSpace(title) ? null : title, current.Current.NativeWindowHandle);
+                }
                 current = walker.GetParent(current);
             }
         }
         catch
         {
-            // procházení stromu UI Automation může u některých appek selhat – necháme fallback na processName.
+            // procházení stromu UI Automation může u některých appek selhat – fallback níže.
         }
 
-        return null;
+        return (null, 0);
     }
 
     public void Dispose() => _timer.Dispose();

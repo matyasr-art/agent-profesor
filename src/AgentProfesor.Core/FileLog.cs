@@ -27,6 +27,7 @@ public sealed class FileLog : IDisposable
 
     private StreamWriter? _writer;
     private DateTimeOffset _openedAt;
+    private bool _disposed;
 
     public FileLog(string directory, int rotationMinutes, Func<DateTimeOffset>? clock = null)
     {
@@ -54,6 +55,12 @@ public sealed class FileLog : IDisposable
 
         lock (_gate)
         {
+            // Po Dispose (typicky při ukončování appky) už nic nezapisovat – jinak by
+            // EnsureWriter při _writer == null otevřel ZCELA NOVÝ agent-*.log, který už nikdo
+            // nezavře. Zpožděný zápis (např. z doznívajícího background tasku) se tiše zahodí.
+            if (_disposed)
+                return;
+
             try
             {
                 var now = _clock();
@@ -92,6 +99,7 @@ public sealed class FileLog : IDisposable
     {
         lock (_gate)
         {
+            _disposed = true;
             _writer?.Dispose();
             _writer = null;
         }

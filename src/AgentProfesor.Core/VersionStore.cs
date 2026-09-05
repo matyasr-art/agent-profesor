@@ -411,19 +411,24 @@ public sealed class VersionStore : IDisposable
     {
         lock (_gate)
         {
-            var text = GetVersionText(versionId);
-            var compressed = TextCompression.Compress(text, _storageConfig.CompressionLevel);
-
-            using var cmd = _connection.CreateCommand();
-            cmd.CommandText = """
-                UPDATE versions
-                SET is_keyframe = 1, base_version_id = NULL, diffs_since_keyframe = 0, content_compressed = $content
-                WHERE id = $id
-                """;
-            cmd.Parameters.AddWithValue("$id", versionId);
-            cmd.Parameters.AddWithValue("$content", compressed);
-            cmd.ExecuteNonQuery();
+            RebaseToKeyframeCore(versionId);
         }
+    }
+
+    private void RebaseToKeyframeCore(long versionId)
+    {
+        var text = GetVersionText(versionId);
+        var compressed = TextCompression.Compress(text, _storageConfig.CompressionLevel);
+
+        using var cmd = _connection.CreateCommand();
+        cmd.CommandText = """
+            UPDATE versions
+            SET is_keyframe = 1, base_version_id = NULL, diffs_since_keyframe = 0, content_compressed = $content
+            WHERE id = $id
+            """;
+        cmd.Parameters.AddWithValue("$id", versionId);
+        cmd.Parameters.AddWithValue("$content", compressed);
+        cmd.ExecuteNonQuery();
     }
 
     /// <summary>
@@ -440,6 +445,25 @@ public sealed class VersionStore : IDisposable
 
     private void DeleteVersionCore(long versionId)
     {
+        // Self-defense: než verzi smažeme, přerebasujeme na keyframe každou verzi, která na ní
+        // visí jako na diff-bázi. Retence sice maže vždy „starší" verze v bucketu a přeživšího
+        // rebasuje první, ale ten argument platí jen dokud captured_at roste s id. Když se
+        // systémové hodiny vrátí zpět (NTP korekce, sleep/resume, VM), může base ležet mimo
+        // bucket a jinak by osiřel. Rebase závislých se musí stát PŘED smazáním, dokud báze ještě
+        // existuje (rekonstrukce textu závislého přes ni prochází).
+        var dependents = new List<long>();
+        using (var find = _connection.CreateCommand())
+        {
+            find.CommandText = "SELECT id FROM versions WHERE base_version_id = $id";
+            find.Parameters.AddWithValue("$id", versionId);
+            using var reader = find.ExecuteReader();
+            while (reader.Read())
+                dependents.Add(reader.GetInt64(0));
+        }
+
+        foreach (var dependentId in dependents)
+            RebaseToKeyframeCore(dependentId);
+
         using var tx = _connection.BeginTransaction();
 
         using (var cmd = _connection.CreateCommand())

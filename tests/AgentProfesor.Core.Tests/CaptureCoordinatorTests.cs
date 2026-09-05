@@ -88,6 +88,23 @@ public class CaptureCoordinatorTests : IDisposable
     }
 
     [Fact]
+    public void Paste_that_replaces_a_selection_is_detected_as_a_large_paste()
+    {
+        // Nejdřív usadíme dlouhý baseline (první velký obsah se uloží jako Paste).
+        var baseline = "HEAD_" + new string('A', 60) + "_TAIL";
+        _coordinator.Observe("doc1", "word", "smlouva.docx", baseline, T0);
+
+        // Uživatel označí 60 znaků uprostřed a vloží 55 jiných: čistá změna délky je jen -5,
+        // ale skutečně změněný úsek je ~60 → musí to být Paste, ne až pozdější Pause/Periodic.
+        var replaced = "HEAD_" + new string('B', 55) + "_TAIL";
+        var result = _coordinator.Observe("doc1", "word", "smlouva.docx", replaced, T0.AddSeconds(2));
+
+        Assert.NotNull(result);
+        var versions = _store.ListVersions(result!.DocumentId);
+        Assert.Equal(CaptureTrigger.Paste, versions[^1].Trigger);
+    }
+
+    [Fact]
     public void Switching_focus_away_commits_pending_change_with_switch_trigger()
     {
         _coordinator.Observe("doc1", "notepad", "Untitled", "rozepsaná věta", T0);

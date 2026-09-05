@@ -110,6 +110,26 @@ public class VersionStoreTests : IDisposable
     }
 
     [Fact]
+    public void Deleting_a_version_that_others_depend_on_rebases_them_first()
+    {
+        // Řetězec: v1 keyframe → v2 diff(base v1) → v3 diff(base v2).
+        var v1 = _store.Capture("doc1", "notepad", "todo.txt", "úkol 1", T0, CaptureTrigger.Pause);
+        _store.Capture("doc1", "notepad", "todo.txt", "úkol 1\núkol 2", T0.AddMinutes(1), CaptureTrigger.Pause);
+        var v3 = _store.Capture("doc1", "notepad", "todo.txt", "úkol 1\núkol 2\núkol 3", T0.AddMinutes(2), CaptureTrigger.Pause);
+
+        var v2id = _store.ListVersions(v1.DocumentId)[1].Id;
+
+        // Smazání báze (v2), na které visí v3, nesmí v3 poškodit – v3 se musí nejdřív
+        // přerebasovat na keyframe. (Chrání proti osiření diffu při zpětném skoku hodin.)
+        _store.DeleteVersion(v2id);
+
+        Assert.Equal("úkol 1\núkol 2\núkol 3", _store.GetVersionText(v3.VersionId!.Value));
+        var remaining = _store.ListVersions(v1.DocumentId);
+        Assert.Equal(2, remaining.Count);
+        Assert.True(remaining[^1].IsKeyframe, "v3 měla být po smazání své báze přerebasována na keyframe.");
+    }
+
+    [Fact]
     public void Search_finds_a_version_containing_the_word()
     {
         _store.Capture("doc1", "outlook", "Re: schůzka", "Ahoj, potvrzuji schůzku na čtvrtek v 10:00.", T0, CaptureTrigger.Pause);

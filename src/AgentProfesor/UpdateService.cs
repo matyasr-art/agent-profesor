@@ -9,7 +9,12 @@ public sealed class UpdateService
 
     public UpdateService(UpdateConfig config)
     {
-        _manager = new UpdateManager(new GithubSource(config.RepoUrl, accessToken: null, prerelease: false));
+        // Repo je veřejné, takže token není potřeba (a NIKDY se nesmí hardcodovat do klienta –
+        // unikl by testerům). Kdyby se repo někdy vrátilo na privátní, jde token dodat přes
+        // proměnnou prostředí, kterou si tester nastaví u sebe – žádný secret v kódu ani balíčku.
+        var token = Environment.GetEnvironmentVariable("AGENTPROFESOR_UPDATE_TOKEN");
+        var accessToken = string.IsNullOrWhiteSpace(token) ? null : token;
+        _manager = new UpdateManager(new GithubSource(config.RepoUrl, accessToken, prerelease: false));
     }
 
     public bool IsInstalled => _manager.IsInstalled;
