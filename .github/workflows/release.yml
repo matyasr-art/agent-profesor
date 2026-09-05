@@ -34,6 +34,9 @@ jobs:
           }
           echo "version=$version" >> $env:GITHUB_OUTPUT
 
+      - name: Testy (AgentProfesor.Core)
+        run: dotnet test tests/AgentProfesor.Core.Tests -c Release
+
       - name: Publish (self-contained win-x64)
         run: dotnet publish src/AgentProfesor/AgentProfesor.csproj -c Release -r win-x64 --self-contained true -p:Version=${{ steps.version.outputs.version }} -o publish/win-x64
 

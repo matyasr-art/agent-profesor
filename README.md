@@ -4,17 +4,42 @@ Tray aplikace pro Windows (.NET 8, WinForms), postavená od nuly s jedním cíle
 na prvním místě: **aktualizace přes GitHub, ne přes ruční přenášení
 instalačních balíčků**.
 
-## Co tohle zatím je a co ne
+## Co appka umí
 
-Tenhle scaffold obsahuje **jen distribuční/update infrastrukturu** — tray
-ikonu s menu a napojení na Velopack, který kontroluje GitHub Releases,
-stahuje novou verzi a potichu ji nainstaluje na pozadí.
+- **Zachytávání textu** — přes UI Automation čte text z aktuálně
+  fokusovaného ovládacího prvku (Word, Outlook, poznámkový blok, prohlížeč,
+  chaty...), stejným způsobem jako to dělá čtečka obrazovky. Nesahá na
+  klávesnici ani schránku — nejde o keylogger.
+- **Verzování** — každá zachycená změna se uloží jako verze dokumentu: buď
+  jako `keyframe` (celý text) nebo jako `diff` (jen rozdíl oproti
+  předchozí verzi), podle nastavení v `Storage` (`FullKeyframeEveryNDiffs`,
+  `DiffToFullThresholdPercent`). Verze vznikne při pauze v psaní
+  (`PauseAfterSeconds`), po delší době nepřetržitého psaní
+  (`PeriodicSnapshotSeconds`), při přepnutí okna, nebo při vložení velkého
+  bloku textu (`LargePasteChars`).
+- **Vyhledávání** — `Ctrl+Alt+Space` otevře okno, kde jde fulltextově hledat
+  (i jen část slova) napříč historií všech zachycených dokumentů.
+- **Rozhraní na historii verzí** — z výsledku hledání se dvojklikem/Enterem
+  otevře okno se seznamem všech verzí daného dokumentu (kdy, proč, keyframe
+  nebo diff), plným textem vybrané verze a barevně odlišeným rozdílem
+  oproti předchozí verzi (`+`/`-`/beze změny).
+- **Pauza/obnovení záznamu** — přes tray menu.
+- **Retence** — `RetentionService` průběžně proklestí starou historii podle
+  `Retention` (do `KeepAllDays` beze změny, pak zhuštění na 1 verzi/hodinu,
+  po `ThinToHourlyDays` na 1 verzi/den nebo úplně).
+- **Aktualizace přes GitHub Releases** (Velopack) — viz níže.
 
-Neobsahuje funkce z původního testovaného buildu (`Profesor.zip` — zachytávání
-textu v appkách, `Ctrl+Alt+Space` vyhledávání, verzování dokumentů...). Ten
-build byl jen zkompilované `.exe`, bez zdrojového kódu, takže se nedal
-rozšířit — tenhle projekt na to navazuje jako čistý základ, do kterého se ty
-funkce postupně doprogramují.
+Jádro (diffování, ukládání verzí, retence, vyhledávání) je v samostatném
+projektu `AgentProfesor.Core`, který neběží jen na Windows — má 40
+jednotkových testů (`tests/AgentProfesor.Core.Tests`), které se pouštějí i
+v CI na `ubuntu-latest` při každém pushi.
+
+**Co ověřeno a co ne:** jádro (diff/verze/retence/hledání) je pokryté testy
+a reálně proběhlo. UI Automation capture, globální klávesová zkratka a tray
+appka jako celek jsou zatím ověřené jen tím, že se to zkompiluje a spustí
+`dotnet publish` pro win-x64 (vývoj probíhá na Macu, který Windows nemá) —
+reálné otestování na živém Windows (podle `CTI-ME-PRVNI.md` z prvního
+testovacího kola) ještě čeká.
 
 ## Jak funguje aktualizace
 

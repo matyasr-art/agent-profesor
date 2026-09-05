@@ -1,0 +1,19 @@
+name: CI
+
+on:
+  push:
+    branches: ["main"]
+  pull_request:
+
+jobs:
+  test-core:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "8.0.x"
+
+      - name: Testy (AgentProfesor.Core – běží i mimo Windows)
+        run: dotnet test tests/AgentProfesor.Core.Tests -c Release
