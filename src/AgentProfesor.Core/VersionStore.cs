@@ -405,5 +405,15 @@ public sealed class VersionStore : IDisposable
 
     private static string[] SplitLines(string text) => text.Split('\n');
 
-    public void Dispose() => _connection.Dispose();
+    public void Dispose()
+    {
+        _connection.Dispose();
+
+        // Microsoft.Data.Sqlite pools the underlying native connection by default, which on
+        // Windows keeps a file handle open even after Dispose() – enough to make an immediate
+        // File.Delete of the database file fail with "used by another process" (harmless on
+        // macOS/Linux, where deleting an open file is allowed, which is why this only showed up
+        // in CI on windows-latest and not during local testing on this Mac).
+        SqliteConnection.ClearPool(_connection);
+    }
 }
