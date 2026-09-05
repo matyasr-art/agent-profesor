@@ -1,0 +1,47 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Verze k vydání (např. 0.1.1), jen pro ruční spuštění"
+        required: true
+
+permissions:
+  contents: write
+
+jobs:
+  build-and-publish:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "8.0.x"
+
+      - name: Zjistit verzi
+        id: version
+        shell: pwsh
+        run: |
+          if ("${{ github.event_name }}" -eq "workflow_dispatch") {
+            $version = "${{ inputs.version }}"
+          } else {
+            $version = "${{ github.ref_name }}".TrimStart("v")
+          }
+          echo "version=$version" >> $env:GITHUB_OUTPUT
+
+      - name: Publish (self-contained win-x64)
+        run: dotnet publish src/AgentProfesor/AgentProfesor.csproj -c Release -r win-x64 --self-contained true -p:Version=${{ steps.version.outputs.version }} -o publish/win-x64
+
+      - name: Nainstalovat Velopack CLI
+        run: dotnet tool install -g vpk
+
+      - name: Zabalit Velopack release
+        run: vpk pack --packId AgentProfesor --packVersion ${{ steps.version.outputs.version }} --packDir publish/win-x64 --mainExe AgentProfesor.exe --packTitle AgentProfesor --packAuthors iBSNS --channel win -o releases
+
+      - name: Publikovat na GitHub Releases
+        run: vpk upload github --repoUrl https://github.com/${{ github.repository }} --token ${{ secrets.GITHUB_TOKEN }} --tag v${{ steps.version.outputs.version }} --releaseName "AgentProfesor ${{ steps.version.outputs.version }}" --channel win -o releases --publish
