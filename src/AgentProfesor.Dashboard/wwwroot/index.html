@@ -1,0 +1,284 @@
+<!doctype html>
+<html lang="cs">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>AgentProfesor — dashboard</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&display=swap">
+<style>
+  :root {
+    --bg: #e9edf4; --surface: #fff; --surface-2: #f3f6fb; --surface-3: #e8edf6;
+    --ink: #191f2b; --muted: #5c6675; --faint: #8a93a3; --line: #d7dde8; --line-strong: #c3cbd9;
+    --accent: #2d6cdf; --accent-ink: #fff; --accent-soft: #e6eefc;
+    --add-bg: #e4f6ea; --add-ink: #1f7a43; --add-bar: #3aa869;
+    --del-bg: #fdeaea; --del-ink: #b3312d; --del-bar: #d6524d;
+    --key-bg: #e6eefc; --key-ink: #2d6cdf; --diff-bg: #eef1f6; --diff-ink: #6a7386;
+    --mark-bg: #fff2b8; --mark-ink: #6b5300; --live: #2faa5e;
+    --shadow: 0 18px 50px -20px rgba(23,35,66,.45);
+    --ui: "Segoe UI", -apple-system, BlinkMacSystemFont, "Helvetica Neue", Arial, sans-serif;
+    --mono: "JetBrains Mono", ui-monospace, "SF Mono", Consolas, monospace;
+  }
+  @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
+    --bg: #14171e; --surface: #1e232d; --surface-2: #262c38; --surface-3: #2f3644;
+    --ink: #e8ecf4; --muted: #9aa4b4; --faint: #6d7688; --line: #333b49; --line-strong: #414a5a;
+    --accent: #6ea0ff; --accent-ink: #0e1420; --accent-soft: #22314c;
+    --add-bg: #17301f; --add-ink: #6fd394; --add-bar: #2f7d4d;
+    --del-bg: #3a1d1d; --del-ink: #f0938e; --del-bar: #9c3f3b;
+    --key-bg: #22314c; --key-ink: #9cc0ff; --diff-bg: #232936; --diff-ink: #808a9c;
+    --mark-bg: #5e4d16; --mark-ink: #ffe28a; --live: #43c47a;
+    --shadow: 0 18px 50px -20px rgba(0,0,0,.7);
+  }}
+  :root[data-theme="dark"] {
+    --bg: #14171e; --surface: #1e232d; --surface-2: #262c38; --surface-3: #2f3644;
+    --ink: #e8ecf4; --muted: #9aa4b4; --faint: #6d7688; --line: #333b49; --line-strong: #414a5a;
+    --accent: #6ea0ff; --accent-ink: #0e1420; --accent-soft: #22314c;
+    --add-bg: #17301f; --add-ink: #6fd394; --add-bar: #2f7d4d;
+    --del-bg: #3a1d1d; --del-ink: #f0938e; --del-bar: #9c3f3b;
+    --key-bg: #22314c; --key-ink: #9cc0ff; --diff-bg: #232936; --diff-ink: #808a9c;
+    --mark-bg: #5e4d16; --mark-ink: #ffe28a; --live: #43c47a;
+    --shadow: 0 18px 50px -20px rgba(0,0,0,.7);
+  }
+  * { box-sizing: border-box; }
+  html, body { height: 100%; }
+  body { margin: 0; background: var(--bg); color: var(--ink); font-family: var(--ui); line-height: 1.5; -webkit-font-smoothing: antialiased; display: flex; flex-direction: column; }
+
+  header.top { display: flex; align-items: center; gap: 14px; padding: 12px 18px; background: var(--surface); border-bottom: 1px solid var(--line); flex-wrap: wrap; }
+  .logo { width: 32px; height: 32px; border-radius: 9px; background: var(--accent); color: var(--accent-ink); display: grid; place-items: center; font-weight: 700; font-size: 19px; flex: none; }
+  .brand h1 { font-size: 1.02rem; margin: 0; letter-spacing: -.01em; }
+  .brand .live { display: flex; align-items: center; gap: 6px; font-size: .74rem; color: var(--muted); }
+  .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--live); box-shadow: 0 0 0 0 var(--live); animation: pulse 2.4s infinite; }
+  @keyframes pulse { 0% { box-shadow: 0 0 0 0 rgba(47,170,94,.5); } 70% { box-shadow: 0 0 0 7px rgba(47,170,94,0); } 100% { box-shadow: 0 0 0 0 rgba(47,170,94,0); } }
+  @media (prefers-reduced-motion: reduce) { .dot { animation: none; } }
+  .searchwrap { margin-left: auto; position: relative; flex: 1; max-width: 460px; min-width: 220px; }
+  .searchbox { width: 100%; font-family: var(--ui); font-size: .95rem; padding: 8px 12px 8px 34px; border: 1px solid var(--line-strong); border-radius: 8px; background: var(--surface-2); color: var(--ink); }
+  .searchbox:focus { outline: 2px solid var(--accent); outline-offset: 1px; border-color: var(--accent); }
+  .searchwrap .mag { position: absolute; left: 11px; top: 50%; transform: translateY(-50%); color: var(--faint); font-size: .9rem; }
+  .kbd { font-family: var(--mono); font-size: .64rem; background: var(--surface-3); color: var(--muted); border: 1px solid var(--line-strong); border-radius: 5px; padding: 2px 6px; }
+  .results { position: absolute; top: calc(100% + 6px); left: 0; right: 0; background: var(--surface); border: 1px solid var(--line-strong); border-radius: 10px; box-shadow: var(--shadow); max-height: 60vh; overflow-y: auto; z-index: 20; }
+  .results[hidden] { display: none; }
+  .rhit { display: block; width: 100%; text-align: left; background: none; border: none; border-bottom: 1px solid var(--line); padding: 10px 13px; cursor: pointer; font-family: var(--ui); color: var(--ink); }
+  .rhit:hover { background: var(--surface-2); }
+  .rhit .rapp { font-size: .62rem; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; color: var(--accent); }
+  .rhit .rtitle { font-size: .8rem; font-weight: 600; }
+  .rhit .rsnip { font-family: var(--mono); font-size: .72rem; color: var(--muted); white-space: pre-wrap; margin-top: 2px; }
+  .rhit .rsnip mark { background: var(--mark-bg); color: var(--mark-ink); border-radius: 2px; padding: 0 1px; }
+  .rcount { padding: 8px 13px; font-size: .72rem; color: var(--faint); }
+
+  main { flex: 1; display: grid; grid-template-columns: 258px 300px 1fr; min-height: 0; }
+  .col { display: flex; flex-direction: column; min-height: 0; border-right: 1px solid var(--line); background: var(--surface-2); }
+  .col.detail { background: var(--surface); border-right: none; }
+  .col .head { padding: 12px 15px 8px; font-size: .7rem; text-transform: uppercase; letter-spacing: .09em; color: var(--faint); font-weight: 700; }
+  .scroll { overflow-y: auto; flex: 1; }
+
+  .doc, .vrow { width: 100%; text-align: left; background: none; border: none; border-bottom: 1px solid var(--line); cursor: pointer; font-family: var(--ui); color: var(--ink); border-left: 3px solid transparent; }
+  .doc { padding: 11px 15px; }
+  .doc:hover, .vrow:hover { background: var(--surface-3); }
+  .doc.active, .vrow.active { background: var(--surface); border-left-color: var(--accent); }
+  .doc .dapp { font-size: .62rem; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; color: var(--accent); }
+  .doc .dtitle { font-size: .84rem; font-weight: 600; margin: 1px 0 3px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .doc .dmeta { font-size: .7rem; color: var(--muted); font-variant-numeric: tabular-nums; }
+
+  .vrow { display: grid; grid-template-columns: 24px 1fr auto; align-items: center; gap: 8px; padding: 10px 15px; }
+  .vrow .num { font-family: var(--mono); font-size: .78rem; color: var(--faint); }
+  .vrow.active .num { color: var(--accent); }
+  .vrow .time { font-size: .82rem; font-weight: 600; font-variant-numeric: tabular-nums; }
+  .vrow .why { font-size: .71rem; color: var(--muted); }
+  .vrow .meta { display: flex; flex-direction: column; align-items: flex-end; gap: 3px; }
+  .badge { font-size: .62rem; font-weight: 700; text-transform: uppercase; letter-spacing: .05em; padding: 2px 7px; border-radius: 999px; white-space: nowrap; }
+  .badge.key { background: var(--key-bg); color: var(--key-ink); }
+  .badge.diff { background: var(--diff-bg); color: var(--diff-ink); }
+  .vrow .chars { font-family: var(--mono); font-size: .66rem; color: var(--faint); font-variant-numeric: tabular-nums; }
+
+  .tabs { display: flex; gap: 2px; padding: 10px 16px 0; border-bottom: 1px solid var(--line); }
+  .tab { border: none; background: none; cursor: pointer; font-family: var(--ui); font-size: .82rem; font-weight: 600; color: var(--muted); padding: 9px 14px; border-bottom: 2px solid transparent; margin-bottom: -1px; }
+  .tab:hover { color: var(--ink); }
+  .tab.active { color: var(--accent); border-bottom-color: var(--accent); }
+  .headstrip { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; padding: 12px 18px 4px; color: var(--muted); font-size: .8rem; }
+  .headstrip b { color: var(--ink); font-size: .9rem; }
+  .pane { padding: 8px 18px 20px; overflow: auto; flex: 1; }
+  pre.doc-text, .diff { font-family: var(--mono); font-size: .82rem; line-height: 1.65; margin: 0; white-space: pre-wrap; word-break: break-word; }
+  .diff .dl { display: block; padding: 1px 8px; border-radius: 3px; }
+  .diff .dl.add { background: var(--add-bg); color: var(--add-ink); box-shadow: inset 2px 0 0 var(--add-bar); }
+  .diff .dl.del { background: var(--del-bg); color: var(--del-ink); box-shadow: inset 2px 0 0 var(--del-bar); }
+  .diff .dl.eq { color: var(--muted); }
+  .diff .dl .g { user-select: none; display: inline-block; width: 1.1em; opacity: .7; }
+  .empty { color: var(--faint); font-size: .85rem; font-style: italic; padding: 10px 0; }
+  .legend { display: flex; gap: 16px; flex-wrap: wrap; padding: 10px 18px 16px; border-top: 1px solid var(--line); font-size: .73rem; color: var(--muted); }
+  .legend span { display: inline-flex; align-items: center; gap: 6px; }
+  .swatch { width: 11px; height: 11px; border-radius: 3px; flex: none; }
+
+  footer { padding: 8px 18px; font-size: .72rem; color: var(--faint); border-top: 1px solid var(--line); background: var(--surface); }
+  footer code { font-family: var(--mono); background: var(--surface-2); padding: 1px 5px; border-radius: 4px; }
+
+  @media (max-width: 860px) {
+    main { grid-template-columns: 1fr; grid-auto-rows: minmax(0, auto); }
+    .col { border-right: none; border-bottom: 1px solid var(--line); max-height: 240px; }
+    .col.detail { max-height: none; }
+  }
+</style>
+</head>
+<body>
+  <header class="top">
+    <div class="logo">P</div>
+    <div class="brand">
+      <h1>AgentProfesor — dashboard</h1>
+      <div class="live"><span class="dot"></span><span id="liveText">běží nad AgentProfesor.Core</span></div>
+    </div>
+    <div class="searchwrap">
+      <span class="mag">⌕</span>
+      <input class="searchbox" id="search" placeholder="Hledat napříč historií… (např. harmonogram, 145, schůzk)" aria-label="Hledat">
+      <div class="results" id="results" hidden></div>
+    </div>
+  </header>
+
+  <main>
+    <div class="col">
+      <div class="head">Dokumenty</div>
+      <div class="scroll" id="docs"></div>
+    </div>
+    <div class="col">
+      <div class="head">Verze</div>
+      <div class="scroll" id="versions"></div>
+    </div>
+    <div class="col detail">
+      <div class="tabs">
+        <button class="tab active" data-tab="diff">Rozdíl oproti předchozí</button>
+        <button class="tab" data-tab="full">Plný text verze</button>
+      </div>
+      <div class="headstrip" id="headstrip"></div>
+      <div class="pane" id="pane"></div>
+      <div class="legend">
+        <span><span class="swatch" style="background:var(--add-bar)"></span> přidáno</span>
+        <span><span class="swatch" style="background:var(--del-bar)"></span> smazáno</span>
+        <span><span class="badge key">Keyframe</span> celý text</span>
+        <span><span class="badge diff">Diff</span> jen rozdíl</span>
+      </div>
+    </div>
+  </main>
+
+  <footer id="foot">Načítám…</footer>
+
+<script>
+const state = { docs: [], docId: null, versions: [], versionId: null, tab: 'diff' };
+
+const el = id => document.getElementById(id);
+const esc = s => (s ?? '').replace(/[&<>]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c]));
+const j = async (url) => (await fetch(url)).json();
+const timeOf = iso => { const d = new Date(iso); return d.toLocaleTimeString('cs-CZ', { hour: '2-digit', minute: '2-digit', second: '2-digit' }); };
+const dayTime = iso => { const d = new Date(iso); return d.toLocaleDateString('cs-CZ', { day: '2-digit', month: '2-digit' }) + ' ' + d.toLocaleTimeString('cs-CZ', { hour: '2-digit', minute: '2-digit' }); };
+
+async function boot() {
+  const meta = await j('/api/meta');
+  el('liveText').textContent = 'běží nad AgentProfesor.Core' + (meta.demo ? ' · ukázková data' : '');
+  el('foot').innerHTML = 'Živá data z <code>AgentProfesor.Core</code> + SQLite přes REST API. ' +
+    (meta.demo ? 'Běží v <b>demo</b> režimu s ukázkovou historií; se skutečnou DB agenta stačí spustit s <code>--db=&lt;cesta&gt;</code>.' : 'Připojeno na skutečnou databázi agenta.');
+  state.docs = await j('/api/documents');
+  renderDocs();
+  if (state.docs.length) selectDoc(state.docs[0].id);
+}
+
+function renderDocs() {
+  el('docs').innerHTML = '';
+  state.docs.forEach(d => {
+    const b = document.createElement('button');
+    b.className = 'doc' + (d.id === state.docId ? ' active' : '');
+    b.innerHTML = `<div class="dapp">${esc(d.app)}</div><div class="dtitle">${esc(d.title)}</div>` +
+      `<div class="dmeta">${d.versionCount} verzí · ${dayTime(d.lastCaptured)}</div>`;
+    b.onclick = () => selectDoc(d.id);
+    el('docs').appendChild(b);
+  });
+}
+
+async function selectDoc(id) {
+  state.docId = id;
+  renderDocs();
+  state.versions = await j(`/api/documents/${id}/versions`);
+  state.versionId = state.versions.length ? state.versions[state.versions.length - 1].id : null;
+  renderVersions();
+  renderDetail();
+}
+
+function renderVersions() {
+  el('versions').innerHTML = '';
+  state.versions.forEach(v => {
+    const b = document.createElement('button');
+    b.className = 'vrow' + (v.id === state.versionId ? ' active' : '');
+    b.innerHTML = `<span class="num">#${v.number}</span>` +
+      `<span><span class="time">${timeOf(v.capturedAt)}</span><br><span class="why">${esc(v.triggerLabel)}</span></span>` +
+      `<span class="meta"><span class="badge ${v.isKeyframe ? 'key' : 'diff'}">${v.isKeyframe ? 'Keyframe' : 'Diff'}</span>` +
+      `<span class="chars">${v.chars} zn.</span></span>`;
+    b.onclick = () => { state.versionId = v.id; renderVersions(); renderDetail(); };
+    el('versions').appendChild(b);
+  });
+}
+
+async function renderDetail() {
+  const idx = state.versions.findIndex(v => v.id === state.versionId);
+  if (idx < 0) { el('headstrip').innerHTML = ''; el('pane').innerHTML = '<div class="empty">Vyber verzi.</div>'; return; }
+  const v = state.versions[idx];
+  el('headstrip').innerHTML = `Verze <b>#${v.number}</b> · ${dayTime(v.capturedAt)} · ` +
+    `<span class="badge ${v.isKeyframe ? 'key' : 'diff'}">${v.isKeyframe ? 'Keyframe' : 'Diff'}</span> · ${esc(v.triggerLabel)} · ${v.chars} znaků`;
+
+  if (state.tab === 'full') {
+    const text = await (await fetch(`/api/versions/${v.id}/text`)).text();
+    el('pane').innerHTML = `<pre class="doc-text">${esc(text)}</pre>`;
+    return;
+  }
+  const prev = idx > 0 ? state.versions[idx - 1].id : null;
+  const url = `/api/versions/${v.id}/diff` + (prev != null ? `?base=${prev}` : '');
+  const data = await j(url);
+  if (data.first) { el('pane').innerHTML = '<div class="empty">První zachycená verze — není s čím porovnat.</div>'; return; }
+  el('pane').innerHTML = '<div class="diff">' + data.lines.map(d => {
+    const cls = d.marker === '+' ? 'add' : d.marker === '-' ? 'del' : 'eq';
+    const g = d.marker === ' ' ? '&nbsp;' : d.marker;
+    return `<span class="dl ${cls}"><span class="g">${g}</span>${esc(d.line) || '&nbsp;'}</span>`;
+  }).join('') + '</div>';
+}
+
+document.querySelectorAll('.tab').forEach(t => t.onclick = () => {
+  state.tab = t.dataset.tab;
+  document.querySelectorAll('.tab').forEach(x => x.classList.toggle('active', x === t));
+  renderDetail();
+});
+
+let searchTimer;
+el('search').addEventListener('input', e => {
+  clearTimeout(searchTimer);
+  const q = e.target.value.trim();
+  searchTimer = setTimeout(() => runSearch(q), 180);
+});
+el('search').addEventListener('blur', () => setTimeout(() => el('results').hidden = true, 150));
+el('search').addEventListener('focus', e => { if (e.target.value.trim()) runSearch(e.target.value.trim()); });
+
+async function runSearch(q) {
+  const box = el('results');
+  if (!q) { box.hidden = true; return; }
+  const hits = await j('/api/search?q=' + encodeURIComponent(q));
+  box.innerHTML = `<div class="rcount">${hits.length} ${plural(hits.length)}</div>` + (hits.length ? '' : '');
+  hits.forEach(h => {
+    const snip = esc(h.snippet).replace(/\[([^\]]+)\]/g, '<mark>$1</mark>');
+    const b = document.createElement('button');
+    b.className = 'rhit';
+    b.innerHTML = `<div class="rapp">${esc(h.app)} · <span style="color:var(--faint);font-weight:400;text-transform:none;letter-spacing:0">${dayTime(h.capturedAt)}</span></div>` +
+      `<div class="rtitle">${esc(h.title)}</div><div class="rsnip">${snip}</div>`;
+    b.onmousedown = async () => {
+      el('results').hidden = true;
+      el('search').value = '';
+      if (state.docId !== h.documentId) await selectDoc(h.documentId);
+      state.versionId = h.versionId;
+      renderVersions();
+      renderDetail();
+    };
+    box.appendChild(b);
+  });
+  box.hidden = false;
+}
+
+function plural(n) { return n === 1 ? 'výsledek' : (n >= 2 && n <= 4 ? 'výsledky' : 'výsledků'); }
+
+boot().catch(err => { el('foot').textContent = 'Chyba načítání: ' + err; });
+</script>
+</body>
+</html>

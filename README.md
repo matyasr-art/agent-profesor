@@ -75,6 +75,25 @@ Z toho exportu je postavený klikací **náhled rozhraní** (jak vypadá okno
 historie verzí a hledání ve Windows appce), takže verzování je vidět i před
 prvním během na Windows.
 
+## Dashboard (běžící webová aplikace)
+
+`src/AgentProfesor.Dashboard` je **skutečná běžící aplikace** nad jádrem
+(ASP.NET Core + SQLite, není vázaná na Windows): přehled dokumentů, historie
+verzí, barevný diff a fulltextové hledání jako živý web s REST API. V budoucnu
+ji může hostovat přímo tray agent nad ostrou databází.
+
+```bash
+# demo režim (dočasná DB s ukázkovou historií)
+ASPNETCORE_URLS=http://localhost:5099 dotnet run --project src/AgentProfesor.Dashboard
+
+# nad skutečnou databází agenta
+dotnet run --project src/AgentProfesor.Dashboard -- --db="%LOCALAPPDATA%\AgentProfesor\agentprofesor.db"
+```
+
+Pak otevřít `http://localhost:5099`. API: `/api/documents`,
+`/api/documents/{id}/versions`, `/api/versions/{id}/text`,
+`/api/versions/{id}/diff?base={prevId}`, `/api/search?q=`.
+
 ## Jak funguje aktualizace
 
 - Appka je nainstalovaná přes Velopack instalátor (`AgentProfesorSetup.exe`

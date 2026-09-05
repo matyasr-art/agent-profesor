@@ -17,3 +17,8 @@ jobs:
 
       - name: Testy (AgentProfesor.Core – běží i mimo Windows)
         run: dotnet test tests/AgentProfesor.Core.Tests -c Release
+
+      - name: Build dashboardu a demo nástroje (ať nezrezaví)
+        run: |
+          dotnet build src/AgentProfesor.Dashboard -c Release
+          dotnet build tools/VersionDemo -c Release
