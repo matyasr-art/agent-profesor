@@ -15,10 +15,11 @@ jobs:
         with:
           dotnet-version: "8.0.x"
 
-      - name: Testy (AgentProfesor.Core – běží i mimo Windows)
+      - name: Testy jádra (AgentProfesor.Core – běží i mimo Windows)
         run: dotnet test tests/AgentProfesor.Core.Tests -c Release
 
-      - name: Build dashboardu a demo nástroje (ať nezrezaví)
-        run: |
-          dotnet build src/AgentProfesor.Dashboard -c Release
-          dotnet build tools/VersionDemo -c Release
+      - name: Integrační testy dashboard API
+        run: dotnet test tests/AgentProfesor.Dashboard.Tests -c Release
+
+      - name: Build demo nástroje (ať nezrezaví)
+        run: dotnet build tools/VersionDemo -c Release

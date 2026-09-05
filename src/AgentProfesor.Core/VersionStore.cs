@@ -31,16 +31,38 @@ public sealed class VersionStore : IDisposable
     // coarse lock costs nothing and removes a whole class of race-condition crashes.
     private readonly object _gate = new();
 
-    public VersionStore(string dataSource, StorageConfig storageConfig)
+    public VersionStore(string dataSource, StorageConfig storageConfig, bool readOnly = false)
     {
         _storageConfig = storageConfig;
-        _connection = new SqliteConnection($"Data Source={dataSource}");
+
+        // Read-only otevření slouží dashboardu, který si prohlíží ŽIVOU databázi běžícího agenta.
+        // Díky WAL (nastavuje ho zapisovatel) čte, aniž by agenta blokoval nebo byl blokován.
+        var connectionString = readOnly
+            ? $"Data Source={dataSource};Mode=ReadOnly"
+            : $"Data Source={dataSource}";
+        _connection = new SqliteConnection(connectionString);
         _connection.Open();
-        Initialize();
+
+        using (var pragma = _connection.CreateCommand())
+        {
+            // Radši chvíli počkat na zámek než hned spadnout na SQLITE_BUSY (agent + dashboard).
+            pragma.CommandText = "PRAGMA busy_timeout=3000;";
+            pragma.ExecuteNonQuery();
+        }
+
+        if (!readOnly)
+            Initialize();
     }
 
     private void Initialize()
     {
+        using (var wal = _connection.CreateCommand())
+        {
+            // WAL umožní souběžné čtení (dashboard) vedle zápisu (agent) bez vzájemného blokování.
+            wal.CommandText = "PRAGMA journal_mode=WAL;";
+            wal.ExecuteNonQuery();
+        }
+
         using var cmd = _connection.CreateCommand();
         cmd.CommandText = """
             CREATE TABLE IF NOT EXISTS documents (
@@ -139,6 +161,44 @@ public sealed class VersionStore : IDisposable
         transaction.Commit();
 
         return new CaptureResult(outcome, doc.Id, versionId);
+    }
+
+    /// <summary>
+    /// Aggregate numbers for the dashboard's overview: how many documents/versions, the
+    /// keyframe-vs-diff split, actual stored (compressed) bytes vs the raw character total across
+    /// all versions (a proxy for what storing every full version would cost), and the capture
+    /// time span.
+    /// </summary>
+    public StorageStats GetStats()
+    {
+        lock (_gate)
+        {
+            using var cmd = _connection.CreateCommand();
+            cmd.CommandText = """
+                SELECT
+                    (SELECT COUNT(*) FROM documents),
+                    (SELECT COUNT(*) FROM versions),
+                    (SELECT COUNT(*) FROM versions WHERE is_keyframe = 1),
+                    (SELECT COALESCE(SUM(LENGTH(content_compressed)), 0) FROM versions),
+                    (SELECT COALESCE(SUM(char_count), 0) FROM versions),
+                    (SELECT MIN(captured_at) FROM versions),
+                    (SELECT MAX(captured_at) FROM versions)
+                """;
+            using var reader = cmd.ExecuteReader();
+            reader.Read();
+
+            var versionCount = (int)reader.GetInt64(1);
+            var keyframeCount = (int)reader.GetInt64(2);
+            return new StorageStats(
+                DocumentCount: (int)reader.GetInt64(0),
+                VersionCount: versionCount,
+                KeyframeCount: keyframeCount,
+                DiffCount: versionCount - keyframeCount,
+                StoredBytes: reader.GetInt64(3),
+                RawChars: reader.GetInt64(4),
+                FirstCapture: reader.IsDBNull(5) ? null : DateTimeOffset.Parse(reader.GetString(5)),
+                LastCapture: reader.IsDBNull(6) ? null : DateTimeOffset.Parse(reader.GetString(6)));
+        }
     }
 
     public string GetLatestText(long documentId)

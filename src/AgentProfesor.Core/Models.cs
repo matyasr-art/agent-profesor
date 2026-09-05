@@ -60,3 +60,13 @@ public enum CaptureOutcome
 }
 
 public sealed record CaptureResult(CaptureOutcome Outcome, long DocumentId, long? VersionId);
+
+public sealed record StorageStats(
+    int DocumentCount,
+    int VersionCount,
+    int KeyframeCount,
+    int DiffCount,
+    long StoredBytes,
+    long RawChars,
+    DateTimeOffset? FirstCapture,
+    DateTimeOffset? LastCapture);

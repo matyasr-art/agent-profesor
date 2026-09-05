@@ -66,6 +66,13 @@
   .rhit .rsnip mark { background: var(--mark-bg); color: var(--mark-ink); border-radius: 2px; padding: 0 1px; }
   .rcount { padding: 8px 13px; font-size: .72rem; color: var(--faint); }
 
+  .stats { display: flex; gap: 12px; padding: 12px 18px; background: var(--surface-2); border-bottom: 1px solid var(--line); flex-wrap: wrap; }
+  .tile { background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 9px 14px; flex: 1 1 130px; min-width: 120px; }
+  .tile .k { font-size: .66rem; text-transform: uppercase; letter-spacing: .08em; color: var(--faint); font-weight: 700; }
+  .tile .v { font-size: 1.3rem; font-weight: 700; letter-spacing: -.02em; font-variant-numeric: tabular-nums; margin-top: 1px; }
+  .tile .s { font-size: .71rem; color: var(--muted); margin-top: 1px; }
+  .tile .s b { color: var(--accent); font-weight: 700; }
+
   main { flex: 1; display: grid; grid-template-columns: 258px 300px 1fr; min-height: 0; }
   .col { display: flex; flex-direction: column; min-height: 0; border-right: 1px solid var(--line); background: var(--surface-2); }
   .col.detail { background: var(--surface); border-right: none; }
@@ -133,6 +140,8 @@
     </div>
   </header>
 
+  <section class="stats" id="stats"></section>
+
   <main>
     <div class="col">
       <div class="head">Dokumenty</div>
@@ -174,10 +183,31 @@ async function boot() {
   el('liveText').textContent = 'běží nad AgentProfesor.Core' + (meta.demo ? ' · ukázková data' : '');
   el('foot').innerHTML = 'Živá data z <code>AgentProfesor.Core</code> + SQLite přes REST API. ' +
     (meta.demo ? 'Běží v <b>demo</b> režimu s ukázkovou historií; se skutečnou DB agenta stačí spustit s <code>--db=&lt;cesta&gt;</code>.' : 'Připojeno na skutečnou databázi agenta.');
+  renderStats(await j('/api/stats'));
   state.docs = await j('/api/documents');
   renderDocs();
   if (state.docs.length) selectDoc(state.docs[0].id);
 }
+
+function renderStats(s) {
+  const factor = s.storedBytes > 0 ? (s.rawChars / s.storedBytes) : 0;
+  const range = (s.firstCapture && s.lastCapture)
+    ? (dayOnly(s.firstCapture) === dayOnly(s.lastCapture)
+        ? dayOnly(s.firstCapture)
+        : dayOnly(s.firstCapture) + ' – ' + dayOnly(s.lastCapture))
+    : '—';
+  const tiles = [
+    { k: 'Dokumenty', v: s.documents, s: `napříč aplikacemi` },
+    { k: 'Verze', v: s.versions, s: `${s.keyframes} keyframe · ${s.diffs} diff` },
+    { k: 'Uloženo', v: kb(s.storedBytes), s: factor >= 1.5 ? `<b>≈ ${factor.toFixed(1)}×</b> méně než plný text` : `komprimovaně` },
+    { k: 'Rozpětí', v: range, s: `poslední: ${s.lastCapture ? dayTime(s.lastCapture) : '—'}` },
+  ];
+  el('stats').innerHTML = tiles.map(t =>
+    `<div class="tile"><div class="k">${t.k}</div><div class="v">${t.v}</div><div class="s">${t.s}</div></div>`).join('');
+}
+
+function kb(bytes) { return bytes < 1024 ? bytes + ' B' : (bytes / 1024).toLocaleString('cs-CZ', { maximumFractionDigits: 1 }) + ' kB'; }
+function dayOnly(iso) { return new Date(iso).toLocaleDateString('cs-CZ', { day: '2-digit', month: '2-digit' }); }
 
 function renderDocs() {
   el('docs').innerHTML = '';

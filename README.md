@@ -78,9 +78,12 @@ prvním během na Windows.
 ## Dashboard (běžící webová aplikace)
 
 `src/AgentProfesor.Dashboard` je **skutečná běžící aplikace** nad jádrem
-(ASP.NET Core + SQLite, není vázaná na Windows): přehled dokumentů, historie
-verzí, barevný diff a fulltextové hledání jako živý web s REST API. V budoucnu
-ji může hostovat přímo tray agent nad ostrou databází.
+(ASP.NET Core + SQLite, není vázaná na Windows): přehledové statistiky
+(dokumenty, verze, poměr keyframe/diff, uložené místo, časové rozpětí),
+seznam dokumentů, historie verzí, barevný diff a fulltextové hledání jako živý
+web s REST API. Nad ostrou databází agenta se otevírá **read-only** (a přes
+WAL), takže neblokuje běžícího agenta; v budoucnu ji může tray agent rovnou
+hostovat. Kryté integračními testy (`tests/AgentProfesor.Dashboard.Tests`).
 
 ```bash
 # demo režim (dočasná DB s ukázkovou historií)
@@ -90,7 +93,7 @@ ASPNETCORE_URLS=http://localhost:5099 dotnet run --project src/AgentProfesor.Das
 dotnet run --project src/AgentProfesor.Dashboard -- --db="%LOCALAPPDATA%\AgentProfesor\agentprofesor.db"
 ```
 
-Pak otevřít `http://localhost:5099`. API: `/api/documents`,
+Pak otevřít `http://localhost:5099`. API: `/api/stats`, `/api/documents`,
 `/api/documents/{id}/versions`, `/api/versions/{id}/text`,
 `/api/versions/{id}/diff?base={prevId}`, `/api/search?q=`.
 

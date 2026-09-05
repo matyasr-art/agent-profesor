@@ -130,6 +130,32 @@ public class VersionStoreTests : IDisposable
     }
 
     [Fact]
+    public void GetStats_reports_counts_bytes_and_time_span()
+    {
+        var empty = _store.GetStats();
+        Assert.Equal(0, empty.DocumentCount);
+        Assert.Equal(0, empty.VersionCount);
+        Assert.Null(empty.FirstCapture);
+
+        var lines = Enumerable.Range(1, 10).Select(i => $"Řádek {i}").ToArray();
+        _store.Capture("doc1", "word", "a.docx", string.Join('\n', lines), T0, CaptureTrigger.Pause);
+        var edited = (string[])lines.Clone();
+        edited[4] = "Řádek 5 upraveno";
+        _store.Capture("doc1", "word", "a.docx", string.Join('\n', edited), T0.AddMinutes(1), CaptureTrigger.Pause);
+        _store.Capture("doc2", "notepad", "b.txt", "něco jiného", T0.AddMinutes(2), CaptureTrigger.Pause);
+
+        var s = _store.GetStats();
+        Assert.Equal(2, s.DocumentCount);
+        Assert.Equal(3, s.VersionCount);
+        Assert.Equal(2, s.KeyframeCount);          // dva první keyframy
+        Assert.Equal(1, s.DiffCount);              // jeden malý diff
+        Assert.True(s.StoredBytes > 0);
+        Assert.True(s.RawChars > 0);
+        Assert.Equal(T0, s.FirstCapture);
+        Assert.Equal(T0.AddMinutes(2), s.LastCapture);
+    }
+
+    [Fact]
     public void Search_finds_a_version_containing_the_word()
     {
         _store.Capture("doc1", "outlook", "Re: schůzka", "Ahoj, potvrzuji schůzku na čtvrtek v 10:00.", T0, CaptureTrigger.Pause);

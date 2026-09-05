@@ -18,7 +18,9 @@ var dbPath = isDemo
     ? Path.Combine(Path.GetTempPath(), $"agentprofesor-dashboard-{Guid.NewGuid():N}.db")
     : dbArg!;
 
-var store = new VersionStore(dbPath, new StorageConfig());
+// Nad živou DB agenta čteme read-only (a přes WAL), ať dashboard neblokuje běžícího agenta a
+// nemůže mu data omylem změnit. V demo režimu musíme zapisovat (seed), takže read-write.
+var store = new VersionStore(dbPath, new StorageConfig(), readOnly: !isDemo);
 if (isDemo)
 {
     DemoData.Seed(store);
@@ -26,7 +28,7 @@ if (isDemo)
 }
 else
 {
-    app.Logger.LogInformation("Dashboard nad reálnou DB: {Db}", dbPath);
+    app.Logger.LogInformation("Dashboard nad reálnou DB (read-only): {Db}", dbPath);
 }
 
 app.Lifetime.ApplicationStopping.Register(() => store.Dispose());
@@ -35,6 +37,22 @@ app.UseDefaultFiles();
 app.UseStaticFiles();
 
 app.MapGet("/api/meta", () => Results.Json(new { demo = isDemo }));
+
+app.MapGet("/api/stats", () =>
+{
+    var s = store.GetStats();
+    return Results.Json(new
+    {
+        documents = s.DocumentCount,
+        versions = s.VersionCount,
+        keyframes = s.KeyframeCount,
+        diffs = s.DiffCount,
+        storedBytes = s.StoredBytes,
+        rawChars = s.RawChars,
+        firstCapture = s.FirstCapture,
+        lastCapture = s.LastCapture,
+    });
+});
 
 app.MapGet("/api/documents", () =>
 {
@@ -142,3 +160,6 @@ static List<(string Marker, string Line)> DiffLines(string previous, string curr
     }
     return result;
 }
+
+// Zpřístupněno pro integrační testy (WebApplicationFactory<Program>).
+public partial class Program { }
