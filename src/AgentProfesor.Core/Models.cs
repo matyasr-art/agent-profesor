@@ -16,6 +16,41 @@ public sealed record CaptureConfig
     public int PollIntervalMilliseconds { get; init; } = 2000;
     public int LargePasteChars { get; init; } = 400;
     public int MinTextLength { get; init; } = 3;
+
+    /// <summary>
+    /// Názvy procesů (bez .exe, nerozlišuje velikost písmen), ve kterých se SMÍ zachytávat.
+    /// Cokoliv jiného agent ignoruje – ani nepřečte text. Bezpečné výchozí chování pro
+    /// ne-technického uživatele: verzují se jen dokumentové aplikace, ne banky/chaty/prohlížeč.
+    ///
+    /// null (klíč chybí) → použije se <see cref="DefaultAppAllowlist"/>.
+    /// prázdné pole → nezachytává se nikde (uživatel si to vypnul).
+    /// </summary>
+    public string[]? AppAllowlist { get; init; }
+
+    /// <summary>Výchozí sada dokumentových aplikací, když v konfiguraci není vlastní seznam.</summary>
+    public static readonly string[] DefaultAppAllowlist =
+    {
+        "WINWORD",    // Microsoft Word
+        "OUTLOOK",    // Microsoft Outlook
+        "notepad",    // Poznámkový blok
+        "wordpad",    // WordPad
+        "notepad++",  // Notepad++
+    };
+
+    /// <summary>Smí se v této aplikaci (název procesu) zachytávat?</summary>
+    public bool IsCaptureAllowed(string processName)
+    {
+        var list = AppAllowlist ?? DefaultAppAllowlist;
+        foreach (var allowed in list)
+        {
+            if (string.Equals(allowed, processName, StringComparison.OrdinalIgnoreCase))
+                return true;
+        }
+        return false;
+    }
+
+    /// <summary>Seznam povolených aplikací, který se reálně použije (pro log/přehled).</summary>
+    public IReadOnlyList<string> EffectiveAllowlist => AppAllowlist ?? DefaultAppAllowlist;
 }
 
 public sealed record StorageConfig

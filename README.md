@@ -6,10 +6,14 @@ instalačních balíčků**.
 
 ## Co appka umí
 
-- **Zachytávání textu** — přes UI Automation čte text z aktuálně
-  fokusovaného ovládacího prvku (Word, Outlook, poznámkový blok, prohlížeč,
-  chaty...), stejným způsobem jako to dělá čtečka obrazovky. Nesahá na
-  klávesnici ani schránku — nejde o keylogger.
+- **Zachytávání textu — jen ve vybraných aplikacích** (allowlist). Přes UI
+  Automation čte text z fokusovaného prvku stejně jako čtečka obrazovky
+  (nesahá na klávesnici ani schránku — nejde o keylogger), ale **pouze v
+  aplikacích ze seznamu** `Capture.AppAllowlist` (výchozí: Word, Outlook,
+  Poznámkový blok, WordPad, Notepad++). Cokoliv jiného — prohlížeč, chaty,
+  bankovnictví, správci hesel — agent ignoruje a ani nepřečte. Bezpečné
+  výchozí chování pro ne-technického uživatele; seznam se dá upravit v
+  konfiguraci (prázdný seznam = nezachytávat nikde).
 - **Verzování** — každá zachycená změna se uloží jako verze dokumentu: buď
   jako `keyframe` (celý text) nebo jako `diff` (jen rozdíl oproti
   předchozí verzi), podle nastavení v `Storage` (`FullKeyframeEveryNDiffs`,

@@ -50,6 +50,7 @@ public sealed class CaptureService : IDisposable
         var interval = Math.Max(250, _config.Capture.PollIntervalMilliseconds);
         _timer.Change(0, interval);
         _log.Info($"Capture spuštěn (poll {interval} ms, pauza {_config.Capture.PauseAfterSeconds} s, periodicky {_config.Capture.PeriodicSnapshotSeconds} s)");
+        _log.Info($"Zachytává se jen v aplikacích: {string.Join(", ", _config.Capture.EffectiveAllowlist)}");
     }
 
     public void Pause()
@@ -160,6 +161,15 @@ public sealed class CaptureService : IDisposable
             processName = Process.GetProcessById(processId).ProcessName;
         }
         catch
+        {
+            NoCapturableDocument();
+            return;
+        }
+
+        // Allowlist: v nepovolených aplikacích (banky, chaty, prohlížeč, správci hesel…) text
+        // vůbec NEČTEME – ne že bychom ho jen nezahodili později. Bezpečné pro ne-technického
+        // uživatele: verzují se jen dokumentové appky ze seznamu.
+        if (!_config.Capture.IsCaptureAllowed(processName))
         {
             NoCapturableDocument();
             return;
