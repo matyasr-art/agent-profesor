@@ -13,6 +13,7 @@ public class CaptureConfigTests
         Assert.True(config.IsCaptureAllowed("WINWORD"));
         Assert.True(config.IsCaptureAllowed("winword"));   // nerozlišuje velikost písmen
         Assert.True(config.IsCaptureAllowed("OUTLOOK"));
+        Assert.True(config.IsCaptureAllowed("POWERPNT"));  // PowerPoint (přednášky)
         Assert.True(config.IsCaptureAllowed("notepad"));
     }
 

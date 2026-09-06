@@ -39,6 +39,16 @@ public static class DemoData
                 CaptureTrigger.Pause, 0),
         });
 
+        SeedDoc(store, "POWERPNT", "demo-prez", "Pohyb jako lék – přednáška pro veřejnost.pptx", baseT.AddDays(-1).AddHours(4), new[]
+        {
+            ("Pohyb jako lék\nprof. Pavel Kolář\n\nSnímek 2 – Proč se hýbat\n- pohyb jako prevence i terapie\n- civilizační hypokineze a bolesti zad",
+                CaptureTrigger.Periodic, 0),
+            ("Pohyb jako lék\nprof. Pavel Kolář\n\nSnímek 2 – Proč se hýbat\n- pohyb jako prevence i terapie\n- civilizační hypokineze a bolesti zad\n\nSnímek 3 – Držení těla a dech\n- posturální funkce bránice\n- hluboký stabilizační systém páteře",
+                CaptureTrigger.Pause, 16),
+            ("Pohyb jako lék\nprof. Pavel Kolář\n\nSnímek 2 – Proč se hýbat\n- pohyb jako prevence i terapie\n- civilizační hypokineze a bolesti zad\n\nSnímek 3 – Držení těla a dech\n- posturální funkce bránice\n- hluboký stabilizační systém páteře\n\nSnímek 4 – Co s tím v praxi\n- pravidelný pohyb v každém věku\n- kvalita pohybu před kvantitou\n- jednoduché cviky do každého dne",
+                CaptureTrigger.Paste, 24),
+        });
+
         SeedDoc(store, "WINWORD", "demo-posudek", "Posudek – žádost o lázeňskou péči.docx", baseT.AddDays(-1).AddHours(2), new[]
         {
             ("Posudek\n\nVěc: žádost o lázeňskou léčebně rehabilitační péči\n\nPacient je dlouhodobě sledován pro chronické bolesti bederní páteře. Doporučuji rehabilitační pobyt zaměřený na stabilizaci páteře a korekci pohybových stereotypů.",

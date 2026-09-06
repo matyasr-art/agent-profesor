@@ -32,6 +32,7 @@ public sealed record CaptureConfig
     {
         "WINWORD",    // Microsoft Word
         "OUTLOOK",    // Microsoft Outlook
+        "POWERPNT",   // Microsoft PowerPoint
         "notepad",    // Poznámkový blok
         "wordpad",    // WordPad
         "notepad++",  // Notepad++
