@@ -19,7 +19,7 @@ var documentId = DemoData.Seed(store);
 var versions = store.ListVersions(documentId);
 
 Console.OutputEncoding = Encoding.UTF8;
-Console.WriteLine($"Dokument: {DemoData.ProposalTitle}");
+Console.WriteLine($"Dokument: {DemoData.MainDocumentTitle}");
 Console.WriteLine($"Zachyceno verzí: {versions.Count}");
 Console.WriteLine();
 Console.WriteLine("  #  Kdy         Typ        Důvod            Znaků");
@@ -37,13 +37,13 @@ foreach (var (marker, line) in DiffLines(store.GetVersionText(versions[3].Id), s
     Console.WriteLine($"  {marker} {line}");
 
 Console.WriteLine();
-Console.WriteLine("Hledání „harmonogram\":");
-foreach (var hit in store.Search("harmonogram"))
+Console.WriteLine("Hledání „stabiliza\":");
+foreach (var hit in store.Search("stabiliza"))
     Console.WriteLine($"  • [{hit.AppName}] {hit.WindowTitle} ({hit.CapturedAt.LocalDateTime:HH:mm})  …{hit.Snippet}…");
 
 var export = new
 {
-    document = new { app = "WINWORD", title = DemoData.ProposalTitle, versionCount = versions.Count },
+    document = new { app = "WINWORD", title = DemoData.MainDocumentTitle, versionCount = versions.Count },
     versions = versions.Select((v, i) => new
     {
         number = i + 1,

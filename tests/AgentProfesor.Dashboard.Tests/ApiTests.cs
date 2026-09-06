@@ -37,11 +37,11 @@ public class ApiTests : IClassFixture<WebApplicationFactory<Program>>
     }
 
     [Fact]
-    public async Task Documents_include_the_proposal()
+    public async Task Documents_include_the_case_report()
     {
         var docs = await _client.GetFromJsonAsync<JsonElement>("/api/documents");
         var titles = docs.EnumerateArray().Select(d => d.GetProperty("title").GetString()).ToList();
-        Assert.Contains(titles, t => t != null && t.Contains("Nabídka Zikmundov"));
+        Assert.Contains(titles, t => t != null && t.Contains("Kazuistika"));
     }
 
     [Fact]
@@ -49,7 +49,7 @@ public class ApiTests : IClassFixture<WebApplicationFactory<Program>>
     {
         var docs = await _client.GetFromJsonAsync<JsonElement>("/api/documents");
         var proposalId = docs.EnumerateArray()
-            .First(d => d.GetProperty("title").GetString()!.Contains("Nabídka Zikmundov"))
+            .First(d => d.GetProperty("title").GetString()!.Contains("Kazuistika"))
             .GetProperty("id").GetInt64();
 
         var versions = await _client.GetFromJsonAsync<JsonElement>($"/api/documents/{proposalId}/versions");
@@ -64,7 +64,7 @@ public class ApiTests : IClassFixture<WebApplicationFactory<Program>>
     {
         var docs = await _client.GetFromJsonAsync<JsonElement>("/api/documents");
         var proposalId = docs.EnumerateArray()
-            .First(d => d.GetProperty("title").GetString()!.Contains("Nabídka Zikmundov"))
+            .First(d => d.GetProperty("title").GetString()!.Contains("Kazuistika"))
             .GetProperty("id").GetInt64();
         var versions = (await _client.GetFromJsonAsync<JsonElement>($"/api/documents/{proposalId}/versions"))
             .EnumerateArray().ToList();
@@ -76,23 +76,23 @@ public class ApiTests : IClassFixture<WebApplicationFactory<Program>>
         Assert.False(diff.GetProperty("first").GetBoolean());
         var lines = diff.GetProperty("lines").EnumerateArray().ToList();
         Assert.NotEmpty(lines);
-        // Verze 5 přidává harmonogram → musí tam být přidaný (+) řádek s tím slovem.
+        // Verze 5 vkládá terapeutický plán → musí tam být přidaný (+) řádek s tím textem.
         Assert.Contains(lines, l => l.GetProperty("marker").GetString() == "+"
-            && l.GetProperty("line").GetString()!.Contains("Harmonogram"));
+            && l.GetProperty("line").GetString()!.Contains("Terapeutický plán"));
     }
 
     [Fact]
     public async Task Search_finds_hits_across_documents()
     {
-        var hits = await _client.GetFromJsonAsync<JsonElement>("/api/search?q=harmonogram");
+        var hits = await _client.GetFromJsonAsync<JsonElement>("/api/search?q=stabiliza");
         Assert.True(hits.GetArrayLength() >= 2);
     }
 
     [Fact]
     public async Task Search_matches_partial_word()
     {
-        var hits = await _client.GetFromJsonAsync<JsonElement>("/api/search?q=schůzk");
-        Assert.True(hits.GetArrayLength() >= 1);
+        var hits = await _client.GetFromJsonAsync<JsonElement>("/api/search?q=bederní");
+        Assert.True(hits.GetArrayLength() >= 2);
     }
 
     [Fact]
@@ -100,7 +100,7 @@ public class ApiTests : IClassFixture<WebApplicationFactory<Program>>
     {
         var docs = await _client.GetFromJsonAsync<JsonElement>("/api/documents");
         var proposalId = docs.EnumerateArray()
-            .First(d => d.GetProperty("title").GetString()!.Contains("Nabídka Zikmundov"))
+            .First(d => d.GetProperty("title").GetString()!.Contains("Kazuistika"))
             .GetProperty("id").GetInt64();
         var versions = (await _client.GetFromJsonAsync<JsonElement>($"/api/documents/{proposalId}/versions"))
             .EnumerateArray().ToList();
@@ -109,7 +109,7 @@ public class ApiTests : IClassFixture<WebApplicationFactory<Program>>
         var resp = await _client.GetAsync($"/api/versions/{lastId}/text");
         Assert.Equal(HttpStatusCode.OK, resp.StatusCode);
         var text = await resp.Content.ReadAsStringAsync();
-        Assert.Contains("Harmonogram", text);
-        Assert.Contains("bez DPH", text);
+        Assert.Contains("Terapeutický plán", text);
+        Assert.Contains("DNS", text);
     }
 }
