@@ -99,7 +99,7 @@ public sealed class SearchForm : Form
 
         foreach (var hit in hits)
         {
-            var item = new ListViewItem(hit.AppName);
+            var item = new ListViewItem(AppNames.ToFriendly(hit.AppName));
             item.SubItems.Add(hit.WindowTitle);
             item.SubItems.Add(hit.CapturedAt.LocalDateTime.ToString("dd.MM. HH:mm"));
             item.SubItems.Add(hit.Snippet);

@@ -3,9 +3,10 @@ using AgentProfesor.Core;
 namespace AgentProfesor;
 
 /// <summary>
-/// The "how does versioning actually work" window: a list of every captured version of one
-/// document (keyframe vs. diff, what triggered it, how big it was) plus that version's full
-/// text and a line-by-line diff against the version right before it.
+/// Uživatelské okno historie: seznam verzí jednoho dokumentu (kdy a co se dělo), celý text
+/// vybrané verze a barevně odlišené „co se změnilo" oproti předchozí verzi. Vědomě bez
+/// vývojářského žargonu (keyframe/diff) – cílový uživatel je expert ve svém oboru, ale ne v IT
+/// a nebude nic nastavovat ani řešit interní pojmy.
 /// </summary>
 public sealed class VersionHistoryForm : Form
 {
@@ -34,15 +35,15 @@ public sealed class VersionHistoryForm : Form
             MultiSelect = false,
             HideSelection = false,
         };
-        _versionsList.Columns.Add("Kdy", 130);
-        _versionsList.Columns.Add("Typ", 70);
-        _versionsList.Columns.Add("Důvod", 90);
-        _versionsList.Columns.Add("Znaků", 60);
+        // Vědomě žádný „Keyframe/Diff" sloupec – to je interní vývojářský detail úložiště, který
+        // uživateli (ne-technik) nic neřekne. Vidí jen: kdy a co se dělo.
+        _versionsList.Columns.Add("Kdy", 160);
+        _versionsList.Columns.Add("Co se dělo", 170);
         _versionsList.SelectedIndexChanged += (_, _) => ShowSelectedVersion();
 
         var tabs = new TabControl { Dock = DockStyle.Fill };
 
-        var fullTextTab = new TabPage("Plný text verze");
+        var fullTextTab = new TabPage("Celý text");
         _fullTextView = new TextBox
         {
             Multiline = true,
@@ -54,7 +55,7 @@ public sealed class VersionHistoryForm : Form
         };
         fullTextTab.Controls.Add(_fullTextView);
 
-        var diffTab = new TabPage("Rozdíl oproti předchozí verzi");
+        var diffTab = new TabPage("Co se změnilo");
         _diffView = new RichTextBox
         {
             Dock = DockStyle.Fill,
@@ -91,10 +92,8 @@ public sealed class VersionHistoryForm : Form
 
         foreach (var v in _store.ListVersions(_documentId))
         {
-            var item = new ListViewItem(v.CapturedAt.LocalDateTime.ToString("dd.MM. HH:mm:ss"));
-            item.SubItems.Add(v.IsKeyframe ? "Keyframe" : "Diff");
+            var item = new ListViewItem(v.CapturedAt.LocalDateTime.ToString("dd.MM.yyyy HH:mm"));
             item.SubItems.Add(TriggerLabel(v.Trigger));
-            item.SubItems.Add(v.CharCount.ToString());
             item.Tag = v.Id;
             _versionsList.Items.Add(item);
         }
